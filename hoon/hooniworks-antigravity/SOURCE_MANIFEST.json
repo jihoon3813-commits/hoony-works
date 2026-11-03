@@ -1,0 +1,126 @@
+{
+  "name": "HooniWorks Antigravity development package",
+  "created_date_kst": "2026-11-03",
+  "source_site": "https://pie-content-studio.hoony365.chatgpt.site",
+  "source_site_version": 3,
+  "source_commit": "8a03258839929a857dbdedf9cbd24d951f074c13",
+  "source_scope": "dist/ and tests/ byte-identical to deployed source commit. Handoff documents and local launcher added.",
+  "included_browser_user_data": false,
+  "files": [
+    {
+      "path": ".env.example",
+      "size": 421,
+      "sha256": "7fb9400cffc7e0d58ca89d39d1fe8219a913d61d04df109c67d756a640e54a31"
+    },
+    {
+      "path": ".gitignore",
+      "size": 92,
+      "sha256": "c68117eb5f3be343bc5d1b6c96212af11582d48c400a09f6b9c0cb06beaae671"
+    },
+    {
+      "path": "00_ANTIGRAVITY_START.md",
+      "size": 4811,
+      "sha256": "05120946904068d3922ec8b24085a33adb2f6e1ccaba1cb181cb4506eb23002c"
+    },
+    {
+      "path": "AGENTS.md",
+      "size": 2267,
+      "sha256": "013e36b8809db9de9a0172c035bedf3fa79dba9f4ad8e92db0c57628f8c98f7d"
+    },
+    {
+      "path": "README.md",
+      "size": 5309,
+      "sha256": "36d3db7ec8ae2e6d0be1a0ab5e48409d4f978608883105ee076fa5ce8403e16d"
+    },
+    {
+      "path": "dist/app.js",
+      "size": 51849,
+      "sha256": "3a03839c26f6647f30216c0ac56d367b63921da9683a0a1b0070b46a26708055"
+    },
+    {
+      "path": "dist/assets/apple.webp",
+      "size": 57558,
+      "sha256": "b9def1e32c70eed146d62174b5ef963ef0ae472dfafe700407c421a3f53bc563"
+    },
+    {
+      "path": "dist/assets/blueberry.webp",
+      "size": 77540,
+      "sha256": "21be4cc1b5c24b6f3cf8151e50aec342643490e6296c9657b4f65697a41a6143"
+    },
+    {
+      "path": "dist/assets/lifestyle.webp",
+      "size": 187392,
+      "sha256": "6c7772590432b0a8af80e2c52b939b6081af46efd740177d2cfa6375d66b87c8"
+    },
+    {
+      "path": "dist/assets/pepperoni.webp",
+      "size": 184616,
+      "sha256": "29cce53d3449806804fcabb545c317674f5dee5fe22a9703e9f1b55676450e4b"
+    },
+    {
+      "path": "dist/enhancements.js",
+      "size": 43922,
+      "sha256": "5fa18f11c8692e9a657a8ea1f2c03a8c289e591562e9508b55d1e23d798a0e4c"
+    },
+    {
+      "path": "dist/hooniworks.css",
+      "size": 20862,
+      "sha256": "89bb717c3ab4e91dd52cfc92824d77ff7362e5cffd20516367b9aa8db04e80e9"
+    },
+    {
+      "path": "dist/hooniworks.js",
+      "size": 38276,
+      "sha256": "c2ebc9766cdfa51bfc18392ecda2766144fe087309d0bb3ec7138f6f8d97b189"
+    },
+    {
+      "path": "dist/index.html",
+      "size": 1039,
+      "sha256": "adaf89d9c3614674093f34054b7577e7b411e7ffea322aa4bb6be1f3c870b179"
+    },
+    {
+      "path": "dist/styles.css",
+      "size": 40600,
+      "sha256": "0466dda0636a72f9e4ac39e3a928c19b0b990e07405c567d8913066ff4641011"
+    },
+    {
+      "path": "docs/ACCEPTANCE_CHECKLIST.md",
+      "size": 3761,
+      "sha256": "386bb30956c923819d3cf2bc3566b585fabaac9b61ff4c47f7a7b866b775f4b0"
+    },
+    {
+      "path": "docs/ARCHITECTURE_AND_MIGRATION.md",
+      "size": 6357,
+      "sha256": "1c1e43abaf6e2b8744bd38204bdf1c808b4b5b8a77074b3c52e0ec161a24581e"
+    },
+    {
+      "path": "docs/ASSETS_AND_SOURCE.md",
+      "size": 2424,
+      "sha256": "8631b979b141c350b47969078f0627d43768386d6e34916a58967bc46e776367"
+    },
+    {
+      "path": "docs/DEVELOPMENT_SPEC.md",
+      "size": 12341,
+      "sha256": "67dd086621b82235b5a7f0c14dab3490432fa0e1f005a5d1ca1e37192e4bdefa"
+    },
+    {
+      "path": "docs/VALIDATION.md",
+      "size": 2064,
+      "sha256": "026f58d6f0c4dd721857ffc50796b1702d377b1c257ee0a39da59350ac87ffe9"
+    },
+    {
+      "path": "package.json",
+      "size": 528,
+      "sha256": "9c8fcf07eb635d98aa4791360705a9e7bba48a8ba1b0d7963130e7995bc33a0a"
+    },
+    {
+      "path": "scripts/serve.mjs",
+      "size": 1939,
+      "sha256": "0dc36e8bbd03ffd3a05c1b9eff2a6f5ca330817f6e8b1dcdc5d8d97da4612da4"
+    },
+    {
+      "path": "tests/workspaces.test.mjs",
+      "size": 6040,
+      "sha256": "6327d8abf378e2b78431c96b25b50b9a11b94b6d9f33f872bb42ecf6d3c55ec5"
+    }
+  ]
+}

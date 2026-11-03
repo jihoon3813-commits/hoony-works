@@ -1,0 +1,10 @@
+{
+  "name": "hoony-works-root",
+  "private": true,
+  "scripts": {
+    "start": "npm --prefix hoon/hooniworks-antigravity start",
+    "dev": "npm --prefix hoon/hooniworks-antigravity run dev",
+    "check": "npm --prefix hoon/hooniworks-antigravity run check",
+    "test": "npm --prefix hoon/hooniworks-antigravity test"
+  }
+}

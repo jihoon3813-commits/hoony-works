@@ -1,0 +1,107 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+export const ROOT_DIR = path.resolve(__dirname, '../..');
+export const DIST_DIR = path.join(ROOT_DIR, 'dist');
+export const DATA_DIR = process.env.HOONI_DATA_DIR || path.join(ROOT_DIR, 'local-data');
+export const UPLOADS_DIR = process.env.HOONI_UPLOADS_DIR || path.join(ROOT_DIR, 'uploads');
+export const RENDER_DIR = process.env.HOONI_RENDER_DIR || path.join(ROOT_DIR, 'render-output');
+
+for (const dir of [DATA_DIR, UPLOADS_DIR, RENDER_DIR]) {
+  fs.mkdirSync(dir, { recursive: true });
+}
+
+// Load .env if present on server (never exposed to browser)
+const envPath = path.join(ROOT_DIR, '.env');
+const serverEnv = { ...process.env };
+if (fs.existsSync(envPath)) {
+  const lines = fs.readFileSync(envPath, 'utf8').split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq > 0) {
+      const key = trimmed.slice(0, eq).trim();
+      const val = trimmed.slice(eq + 1).trim().replace(/^['"]|['"]$/g, '');
+      if (!(key in serverEnv)) serverEnv[key] = val;
+    }
+  }
+}
+
+// Secret encryption key management (never logged or sent to client)
+const secretKeyFile = path.join(DATA_DIR, '.secret-key');
+function getEncryptionKey() {
+  if (serverEnv.TOKEN_ENCRYPTION_KEY && serverEnv.TOKEN_ENCRYPTION_KEY.length >= 32) {
+    return crypto.createHash('sha256').update(serverEnv.TOKEN_ENCRYPTION_KEY).digest();
+  }
+  if (fs.existsSync(secretKeyFile)) {
+    return Buffer.from(fs.readFileSync(secretKeyFile, 'utf8').trim(), 'hex');
+  }
+  const generated = crypto.randomBytes(32);
+  fs.writeFileSync(secretKeyFile, generated.toString('hex'), { mode: 0o600 });
+  return generated;
+}
+
+const ENCRYPTION_KEY = getEncryptionKey();
+
+export function encryptSecret(plainText) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', ENCRYPTION_KEY, iv);
+  const encrypted = Buffer.concat([cipher.update(String(plainText), 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `${iv.toString('hex')}:${tag.toString('hex')}:${encrypted.toString('hex')}`;
+}
+
+export function decryptSecret(cipherText) {
+  const [ivHex, tagHex, dataHex] = String(cipherText).split(':');
+  if (!ivHex || !tagHex || !dataHex) throw new Error('Invalid secret payload');
+  const decipher = crypto.createDecipheriv('aes-256-gcm', ENCRYPTION_KEY, Buffer.from(ivHex, 'hex'));
+  decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
+  return Buffer.concat([decipher.update(Buffer.from(dataHex, 'hex')), decipher.final()]).toString('utf8');
+}
+
+export function signStatePayload(payloadObj) {
+  const data = Buffer.from(JSON.stringify(payloadObj), 'utf8').toString('base64url');
+  const sig = crypto.createHmac('sha256', ENCRYPTION_KEY).update(data).digest('base64url');
+  return `${data}.${sig}`;
+}
+
+export function verifyStatePayload(token) {
+  const [data, sig] = String(token || '').split('.');
+  if (!data || !sig) throw new Error('유효하지 않은 OAuth state 서명입니다.');
+  const expected = crypto.createHmac('sha256', ENCRYPTION_KEY).update(data).digest('base64url');
+  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
+    throw new Error('OAuth state 서명 검증에 실패했습니다.');
+  }
+  const parsed = JSON.parse(Buffer.from(data, 'base64url').toString('utf8'));
+  if (parsed.expiresAt && Date.now() > parsed.expiresAt) {
+    throw new Error('OAuth 인증 요청 시간이 만료되었습니다.');
+  }
+  return parsed;
+}
+
+export function getProviderConnectionStatus() {
+  return {
+    OpenAI: {
+      configured: Boolean(serverEnv.OPENAI_API_KEY),
+      mode: serverEnv.OPENAI_API_KEY ? 'live_ready' : 'mock',
+      textModel: serverEnv.TEXT_MODEL || 'gpt-4.1',
+      imageModel: serverEnv.IMAGE_MODEL || 'gpt-image-1'
+    },
+    Google: {
+      configured: Boolean(serverEnv.GOOGLE_API_KEY),
+      mode: serverEnv.GOOGLE_API_KEY ? 'live_ready' : 'mock',
+      videoModel: serverEnv.VIDEO_MODEL || 'veo-2.0-generate-001',
+      voiceModel: serverEnv.VOICE_MODEL || 'gemini-tts-ko'
+    },
+    OAuthMeta: {
+      configured: Boolean(serverEnv.OAUTH_META_CLIENT_ID && serverEnv.OAUTH_META_CLIENT_SECRET)
+    },
+    OAuthGoogle: {
+      configured: Boolean(serverEnv.OAUTH_GOOGLE_CLIENT_ID && serverEnv.OAUTH_GOOGLE_CLIENT_SECRET)
+    }
+  };
+}
