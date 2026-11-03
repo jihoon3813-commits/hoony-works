@@ -6,6 +6,11 @@
     "start": "npm --prefix hoon/hooniworks-antigravity start",
     "dev": "npm --prefix hoon/hooniworks-antigravity run dev",
     "check": "npm --prefix hoon/hooniworks-antigravity run check",
-    "test": "npm --prefix hoon/hooniworks-antigravity test"
+    "test": "npm --prefix hoon/hooniworks-antigravity test",
+    "convex:dev": "convex dev",
+    "convex:deploy": "convex deploy"
+  },
+  "dependencies": {
+    "convex": "^1.49.0"
   }
 }

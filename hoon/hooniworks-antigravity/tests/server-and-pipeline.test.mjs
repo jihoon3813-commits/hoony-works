@@ -355,7 +355,8 @@ try {
     'modules/api-store.js',
     'modules/concept-studio.js',
     'modules/layer-video.js',
-    'modules/publish-oauth.js'
+    'modules/publish-oauth.js',
+    'modules/convex-sync.js'
   ].map(f => fs.readFileSync(new URL('../dist/' + f, import.meta.url), 'utf8'));
 
   const nodes = new Map();

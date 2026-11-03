@@ -10,7 +10,7 @@
   "scripts": {
     "start": "node scripts/serve.mjs",
     "dev": "node scripts/serve.mjs",
-    "check": "node --check dist/app.js && node --check dist/enhancements.js && node --check dist/hooniworks.js && node --check dist/modules/api-store.js && node --check dist/modules/concept-studio.js && node --check dist/modules/layer-video.js && node --check dist/modules/publish-oauth.js && node --check scripts/serve.mjs && node --check src/server/app-server.mjs",
+    "check": "node --check dist/app.js && node --check dist/enhancements.js && node --check dist/hooniworks.js && node --check dist/modules/api-store.js && node --check dist/modules/concept-studio.js && node --check dist/modules/layer-video.js && node --check dist/modules/publish-oauth.js && node --check dist/modules/convex-sync.js && node --check scripts/serve.mjs && node --check src/server/app-server.mjs",
     "test": "node tests/workspaces.test.mjs && node tests/server-and-pipeline.test.mjs"
   }
 }
