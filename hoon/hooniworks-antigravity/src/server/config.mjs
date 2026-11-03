@@ -94,25 +94,37 @@ export function verifyStatePayload(token) {
   return parsed;
 }
 
+export function getApiKey(name) {
+  if (name === 'Google' || name === 'GOOGLE_API_KEY') {
+    return process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || serverEnv.GOOGLE_API_KEY || serverEnv.GEMINI_API_KEY || '';
+  }
+  if (name === 'OpenAI' || name === 'OPENAI_API_KEY') {
+    return process.env.OPENAI_API_KEY || serverEnv.OPENAI_API_KEY || '';
+  }
+  return process.env[name] || serverEnv[name] || '';
+}
+
 export function getProviderConnectionStatus() {
+  const openaiKey = getApiKey('OpenAI');
+  const googleKey = getApiKey('Google');
   return {
     OpenAI: {
-      configured: Boolean(serverEnv.OPENAI_API_KEY),
-      mode: serverEnv.OPENAI_API_KEY ? 'live_ready' : 'mock',
-      textModel: serverEnv.TEXT_MODEL || 'gpt-4.1',
-      imageModel: serverEnv.IMAGE_MODEL || 'gpt-image-1'
+      configured: Boolean(openaiKey),
+      mode: openaiKey ? 'live_ready' : 'mock',
+      textModel: process.env.TEXT_MODEL || serverEnv.TEXT_MODEL || 'gpt-4o-mini',
+      imageModel: process.env.IMAGE_MODEL || serverEnv.IMAGE_MODEL || 'dall-e-3'
     },
     Google: {
-      configured: Boolean(serverEnv.GOOGLE_API_KEY),
-      mode: serverEnv.GOOGLE_API_KEY ? 'live_ready' : 'mock',
-      videoModel: serverEnv.VIDEO_MODEL || 'veo-2.0-generate-001',
-      voiceModel: serverEnv.VOICE_MODEL || 'gemini-tts-ko'
+      configured: Boolean(googleKey),
+      mode: googleKey ? 'live_ready' : 'mock',
+      videoModel: process.env.VIDEO_MODEL || serverEnv.VIDEO_MODEL || 'imagen-3.0-generate-002',
+      voiceModel: process.env.VOICE_MODEL || serverEnv.VOICE_MODEL || 'gemini-2.0-flash'
     },
     OAuthMeta: {
-      configured: Boolean(serverEnv.OAUTH_META_CLIENT_ID && serverEnv.OAUTH_META_CLIENT_SECRET)
+      configured: Boolean((process.env.OAUTH_META_CLIENT_ID || serverEnv.OAUTH_META_CLIENT_ID) && (process.env.OAUTH_META_CLIENT_SECRET || serverEnv.OAUTH_META_CLIENT_SECRET))
     },
     OAuthGoogle: {
-      configured: Boolean(serverEnv.OAUTH_GOOGLE_CLIENT_ID && serverEnv.OAUTH_GOOGLE_CLIENT_SECRET)
+      configured: Boolean((process.env.OAUTH_GOOGLE_CLIENT_ID || serverEnv.OAUTH_GOOGLE_CLIENT_ID) && (process.env.OAUTH_GOOGLE_CLIENT_SECRET || serverEnv.OAUTH_GOOGLE_CLIENT_SECRET))
     }
   };
 }

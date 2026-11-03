@@ -224,6 +224,15 @@ try {
   assert.ok(instaContent.layers.backgroundLayer);
   assert.ok(instaContent.layers.productLayer.preserveOriginal);
 
+  // 7-1. Image Generation & Backdrop Attachment
+  const imgGenRes = await api(`/api/workspaces/${ws2Id}/contents/${instaContent.id}/generate`, {
+    method: 'POST',
+    body: { jobType: 'image_gen', provider: 'OpenAI' }
+  });
+  assert.equal(imgGenRes.status, 200);
+  assert.ok(imgGenRes.data.content.layers.backgroundLayer.backdropDataUrl);
+  assert.equal(imgGenRes.data.job.jobType, 'image_gen');
+
   // 8. Approve Content -> Edit Text (0 API cost) -> Verify Prior Approval is Invalidated!
   const approve1 = await api(`/api/workspaces/${ws2Id}/contents/${instaContent.id}/revise`, {
     method: 'POST',

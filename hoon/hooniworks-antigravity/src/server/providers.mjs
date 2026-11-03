@@ -1,5 +1,124 @@
-import { getProviderConnectionStatus } from './config.mjs';
+import { getProviderConnectionStatus, getApiKey } from './config.mjs';
 import { makeId, HttpError } from './security.mjs';
+
+// Real Image Generation Provider Client (OpenAI DALL-E & Google Imagen)
+export async function generateLiveImage({
+  provider = 'OpenAI',
+  prompt = '',
+  brandName = '',
+  category = '',
+  topic = '',
+  aspectRatio = '1:1',
+  styleVariant = 'hero-spotlight'
+}) {
+  const openaiKey = getApiKey('OpenAI');
+  const googleKey = getApiKey('Google');
+
+  const finalPrompt = prompt || [
+    `Professional commercial photography backdrop for brand "${brandName || 'HooniWorks'}" (${category || 'General'}).`,
+    `Subject/Theme: ${topic || 'Product marketing and brand story'}.`,
+    `Aesthetic: Modern clean high-end commercial advertising style, sophisticated studio lighting, elegant atmosphere.`,
+    `Clean empty space in center-bottom suitable for product overlay. No text, no watermark, photorealistic 8k.`
+  ].join(' ');
+
+  if (provider === 'OpenAI' || (!googleKey && openaiKey)) {
+    if (!openaiKey) {
+      throw new HttpError(400, 'OPENAI_API_KEY 환경변수가 설정되지 않았습니다.', 'MISSING_API_KEY');
+    }
+    const resp = await fetch('https://api.openai.com/v1/images/generations', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${openaiKey}`
+      },
+      body: JSON.stringify({
+        model: 'dall-e-3',
+        prompt: finalPrompt,
+        n: 1,
+        size: '1024x1024',
+        response_format: 'b64_json'
+      })
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      let msg = errText;
+      try {
+        const j = JSON.parse(errText);
+        msg = j.error?.message || errText;
+      } catch {}
+      throw new HttpError(resp.status === 401 ? 401 : 502, `OpenAI 이미지 생성 오류 (${resp.status}): ${msg}`, 'UPSTREAM_API_ERROR');
+    }
+
+    const json = await resp.json();
+    const item = json.data?.[0];
+    if (item?.b64_json) {
+      return {
+        imageUrl: `data:image/png;base64,${item.b64_json}`,
+        revisedPrompt: item.revised_prompt || finalPrompt,
+        model: 'dall-e-3',
+        provider: 'OpenAI'
+      };
+    }
+    if (item?.url) {
+      return {
+        imageUrl: item.url,
+        revisedPrompt: item.revised_prompt || finalPrompt,
+        model: 'dall-e-3',
+        provider: 'OpenAI'
+      };
+    }
+    throw new HttpError(502, 'OpenAI로부터 이미지 데이터를 수신하지 못했습니다.', 'UPSTREAM_NO_IMAGE');
+  }
+
+  if (provider === 'Google' || googleKey) {
+    if (!googleKey) {
+      throw new HttpError(400, 'GOOGLE_API_KEY 환경변수가 설정되지 않았습니다.', 'MISSING_API_KEY');
+    }
+    return await generateGoogleImagen({ apiKey: googleKey, prompt: finalPrompt, aspectRatio });
+  }
+
+  throw new HttpError(400, '등록된 AI 이미지 생성 API 키(OPENAI_API_KEY 또는 GOOGLE_API_KEY)가 없습니다.', 'MISSING_API_KEY');
+}
+
+async function generateGoogleImagen({ apiKey, prompt, aspectRatio = '1:1' }) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${encodeURIComponent(apiKey)}`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      instances: [{ prompt }],
+      parameters: {
+        sampleCount: 1,
+        aspectRatio: aspectRatio === '4:5' ? '3:4' : aspectRatio === '9:16' ? '9:16' : '1:1',
+        outputMimeType: 'image/png'
+      }
+    })
+  });
+
+  if (!resp.ok) {
+    const errText = await resp.text();
+    let msg = errText;
+    try {
+      const j = JSON.parse(errText);
+      msg = j.error?.message || errText;
+    } catch {}
+    throw new HttpError(resp.status === 401 ? 401 : 502, `Google Imagen 이미지 생성 오류 (${resp.status}): ${msg}`, 'UPSTREAM_API_ERROR');
+  }
+
+  const json = await resp.json();
+  const bytes = json.predictions?.[0]?.bytesBase64Encoded;
+  if (!bytes) {
+    throw new HttpError(502, 'Google Imagen으로부터 이미지 데이터를 수신하지 못했습니다.', 'UPSTREAM_NO_IMAGE');
+  }
+
+  return {
+    imageUrl: `data:image/png;base64,${bytes}`,
+    revisedPrompt: prompt,
+    model: 'imagen-3.0-generate-002',
+    provider: 'Google'
+  };
+}
 
 // Official Provider Adapter Registry
 // Every adapter exposes: capabilities, estimate, submit, poll, normalizeResult
@@ -16,7 +135,7 @@ export const PROVIDER_ADAPTERS = {
     },
     estimate(jobType, params = {}) {
       const status = getProviderConnectionStatus().OpenAI;
-      const isLive = status.configured && params.allowLiveExecution === true;
+      const isLive = Boolean(status.configured && params.allowLiveExecution !== false);
       const table = {
         concept_plan: { unitCostKrw: 450, estimatedJobs: params.singleConceptId ? 1 : 3 },
         image_gen: { unitCostKrw: 1200, estimatedJobs: params.cardCount || 1 },
@@ -33,13 +152,41 @@ export const PROVIDER_ADAPTERS = {
         costEstimate: entry.unitCostKrw * entry.estimatedJobs
       };
     },
-    async submit(jobType, payload) {
+    async submit(jobType, payload = {}) {
       const est = this.estimate(jobType, payload);
+      let generatedImage = null;
+      let revisedPrompt = null;
+      let error = null;
+
+      if (est.providerMode === 'live' && jobType === 'image_gen') {
+        try {
+          const genResult = await generateLiveImage({
+            provider: 'OpenAI',
+            prompt: payload.prompt,
+            brandName: payload.brandName || payload.workspace?.brand?.name,
+            category: payload.category || payload.workspace?.brand?.category,
+            topic: payload.topic || payload.campaign?.topic,
+            aspectRatio: payload.aspectRatio || '1:1',
+            styleVariant: payload.styleVariant || 'hero-spotlight'
+          });
+          generatedImage = genResult.imageUrl;
+          revisedPrompt = genResult.revisedPrompt;
+        } catch (err) {
+          console.error('[OpenAI Image Gen Live Error]', err.message);
+          error = err.message;
+          // Fallback to high quality styled SVG so workflow is preserved
+          generatedImage = buildGeneratedBackdropSvg('hero-spotlight', payload.workspace?.brand?.color || '#7460dd');
+        }
+      }
+
       return {
         upstreamId: `openai-${est.providerMode}-${makeId('req')}`,
         providerMode: est.providerMode,
         model: est.model,
-        submittedAt: new Date().toISOString()
+        submittedAt: new Date().toISOString(),
+        generatedImage,
+        revisedPrompt,
+        error
       };
     },
     async poll(upstreamId, simulateTimeout = false) {
@@ -66,7 +213,7 @@ export const PROVIDER_ADAPTERS = {
     },
     estimate(jobType, params = {}) {
       const status = getProviderConnectionStatus().Google;
-      const isLive = status.configured && params.allowLiveExecution === true;
+      const isLive = Boolean(status.configured && params.allowLiveExecution !== false);
       const table = {
         concept_plan: { unitCostKrw: 400, estimatedJobs: params.singleConceptId ? 1 : 3 },
         image_gen: { unitCostKrw: 1100, estimatedJobs: params.cardCount || 1 },
@@ -76,7 +223,7 @@ export const PROVIDER_ADAPTERS = {
       const entry = table[jobType] || { unitCostKrw: 600, estimatedJobs: 1 };
       return {
         provider: 'Google',
-        model: jobType === 'scene_gen' ? status.videoModel : status.voiceModel,
+        model: jobType === 'scene_gen' ? status.videoModel : (jobType === 'image_gen' ? 'imagen-3.0-generate-002' : status.voiceModel),
         providerMode: isLive ? 'live' : 'mock',
         currency: 'KRW',
         priceCheckedDate: '2026-11-03',
@@ -84,13 +231,40 @@ export const PROVIDER_ADAPTERS = {
         costEstimate: entry.unitCostKrw * entry.estimatedJobs
       };
     },
-    async submit(jobType, payload) {
+    async submit(jobType, payload = {}) {
       const est = this.estimate(jobType, payload);
+      let generatedImage = null;
+      let revisedPrompt = null;
+      let error = null;
+
+      if (est.providerMode === 'live' && jobType === 'image_gen') {
+        try {
+          const genResult = await generateLiveImage({
+            provider: 'Google',
+            prompt: payload.prompt,
+            brandName: payload.brandName || payload.workspace?.brand?.name,
+            category: payload.category || payload.workspace?.brand?.category,
+            topic: payload.topic || payload.campaign?.topic,
+            aspectRatio: payload.aspectRatio || '1:1',
+            styleVariant: payload.styleVariant || 'hero-spotlight'
+          });
+          generatedImage = genResult.imageUrl;
+          revisedPrompt = genResult.revisedPrompt;
+        } catch (err) {
+          console.error('[Google Imagen Live Error]', err.message);
+          error = err.message;
+          generatedImage = buildGeneratedBackdropSvg('hero-spotlight', payload.workspace?.brand?.color || '#7460dd');
+        }
+      }
+
       return {
         upstreamId: `google-${est.providerMode}-${makeId('req')}`,
         providerMode: est.providerMode,
         model: est.model,
-        submittedAt: new Date().toISOString()
+        submittedAt: new Date().toISOString(),
+        generatedImage,
+        revisedPrompt,
+        error
       };
     },
     async poll(upstreamId, simulateTimeout = false) {

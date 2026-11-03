@@ -271,7 +271,10 @@ if (typeof settingsPage === "function") {
         </div>
 
         <div class="flex between" style="margin-top:16px;flex-wrap:wrap;gap:10px">
-          <button class="btn sm" data-act="open-convex-modal">${icon("settings")}배포 분기 설정 변경</button>
+          <div class="flex" style="gap:8px">
+            <button class="btn sm" data-act="open-convex-modal">${icon("settings")}배포 분기 설정</button>
+            <button class="btn sm ghost" data-act="convex-reset-cloud" style="color:#c53030">${icon("trash")}${esc(active.shortName)} 데이터 초기화</button>
+          </div>
           <button class="btn sm primary" data-act="convex-sync-push">${icon("upload")}${esc(active.shortName)}에 지금 백업</button>
         </div>
       </section>
@@ -374,6 +377,31 @@ document.addEventListener("click", async (e) => {
     } finally {
       el.disabled = false;
       el.textContent = oldText;
+    }
+  } else if (a === "convex-reset-cloud") {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    const active = hwConvex.getActiveDeployment();
+    openModal(
+      `${active.shortName} 데이터 초기화 확인`,
+      `<div class="notice">
+        ${icon("alert")}<strong>주의:</strong> ${esc(active.name)}의 모든 클라우드 작업 데이터(상품, 캠페인, 콘셉트, 콘텐츠, 자산)를 완전히 초기화합니다.
+      </div>
+      <p class="intro" style="margin-top:12px">초기화 후 새롭게 등록한 브랜드 및 실제 AI 생성 이미지를 깨끗한 상태에서 시작할 수 있습니다.</p>`,
+      `<button class="btn" data-act="close-modal">취소</button>
+       <button class="btn primary" data-act="convex-confirm-reset-cloud" style="background:#d93025;border-color:#d93025">초기화 실행</button>`
+    );
+  } else if (a === "convex-confirm-reset-cloud") {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    const active = hwConvex.getActiveDeployment();
+    try {
+      await hwConvex.call("mutation", "workspaces:clearAllData", {});
+      closeModal();
+      toast(`[${active.shortName}] 클라우드 데이터가 초기화되었습니다.`);
+      render();
+    } catch (err) {
+      toast("초기화 실패: " + err.message);
     }
   }
 });

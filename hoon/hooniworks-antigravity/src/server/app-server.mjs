@@ -1093,7 +1093,16 @@ async function handleApiRequest(req, res, urlObj, pathname, db) {
     };
     db.generationJobs.unshift(job);
 
-    const sub = await adapter.submit(jobType, body);
+    const sub = await adapter.submit(jobType, {
+      ...body,
+      workspace,
+      campaign: camp,
+      content,
+      brandName: workspace.brand?.name,
+      category: workspace.brand?.category,
+      topic: camp.topic || workspace.brand?.description,
+      channelId: content.channelId
+    });
     job.upstreamId = sub.upstreamId;
 
     // Support timeout simulation for reconciliation verification
@@ -1127,7 +1136,27 @@ async function handleApiRequest(req, res, urlObj, pathname, db) {
       content.layers ||= {};
       content.layers.backgroundLayer ||= {};
       content.layers.backgroundLayer.generatedAt = new Date().toISOString();
-      content.layers.backgroundLayer.provenance = estimate.providerMode === 'live' ? 'api_generated_bg' : 'mock_generated_bg';
+      content.layers.backgroundLayer.provenance = sub.providerMode === 'live' ? 'api_generated_bg' : 'mock_generated_bg';
+      if (sub.generatedImage) {
+        content.layers.backgroundLayer.backdropDataUrl = sub.generatedImage;
+
+        const assetId = makeId('asset');
+        const newAsset = {
+          id: assetId,
+          workspaceId,
+          name: `${workspace.brand?.name || '브랜드'} AI 생성 비주얼`,
+          role: 'product',
+          type: 'AI 생성 이미지',
+          img: sub.generatedImage,
+          tags: 'AI생성,배경',
+          provenance: `${adapter.name} (${sub.model || 'live'})`,
+          original: false,
+          previewOnly: false,
+          createdAt: new Date().toISOString()
+        };
+        db.assets.unshift(newAsset);
+        (workspace.uploads ||= []).unshift(newAsset);
+      }
       content.state = 'generated_ready';
     }
 

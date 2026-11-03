@@ -1,6 +1,34 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
+// Clear all data for complete reset
+export const clearAllData = mutation({
+  args: {
+    secret: v.optional(v.string()),
+  },
+  handler: async (ctx) => {
+    const tables = [
+      "workspaces",
+      "campaigns",
+      "concepts",
+      "contents",
+      "assets",
+      "templates",
+      "publications",
+      "settings",
+    ];
+    const deletedCounts = {};
+    for (const table of tables) {
+      const records = await ctx.db.query(table).collect();
+      for (const rec of records) {
+        await ctx.db.delete(rec._id);
+      }
+      deletedCounts[table] = records.length;
+    }
+    return { ok: true, deletedCounts, clearedAt: new Date().toISOString() };
+  },
+});
+
 // Get all workspaces and high-level counts
 export const listWorkspaces = query({
   handler: async (ctx) => {

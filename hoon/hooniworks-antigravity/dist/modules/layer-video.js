@@ -6,6 +6,17 @@ function getCurrentChannelContent(c = campaign(), ch = channel) {
 }
 
 // Wrap paintCard so concept layout & separated layer settings (background, product original scale/offset, logo placement) render on canvas
+const _backdropCache = new Map();
+function getCachedBackdrop(url) {
+  if (!url) return null;
+  if (_backdropCache.has(url)) return _backdropCache.get(url);
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.src = url;
+  _backdropCache.set(url, img);
+  return img;
+}
+
 const basePaintCard = paintCard;
 paintCard = function(cv, t, title, im, sub, index = 0, total = 5, format = 'instagram') {
   const c = campaign();
@@ -36,8 +47,46 @@ paintCard = function(cv, t, title, im, sub, index = 0, total = 5, format = 'inst
   const effectiveSub = layers?.textLayers?.subheadline || sub || effectiveTemplate.subtitle;
   basePaintCard(cv, effectiveTemplate, title, im, effectiveSub, index, total, format);
 
-  // Overlay custom logo placement badge or product layer adjustments if configured
   const ctx = cv.getContext('2d');
+  const backdropUrl = layers?.backgroundLayer?.backdropDataUrl || selectedConcept?.backdropDataUrl;
+  if (backdropUrl) {
+    const bgImg = getCachedBackdrop(backdropUrl);
+    if (bgImg && bgImg.complete && bgImg.naturalWidth > 0) {
+      try {
+        ctx.save();
+        ctx.drawImage(bgImg, 0, 0, cv.width, cv.height);
+        const grad = ctx.createLinearGradient(0, 0, 0, cv.height);
+        grad.addColorStop(0, 'rgba(15,13,25,0.72)');
+        grad.addColorStop(0.32, 'rgba(15,13,25,0.22)');
+        grad.addColorStop(0.68, 'rgba(15,13,25,0.18)');
+        grad.addColorStop(1, 'rgba(15,13,25,0.82)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, cv.width, cv.height);
+        ctx.restore();
+
+        if (im && im.complete && im.naturalWidth > 0 && !prod().placeholder) {
+          ctx.save();
+          contain(ctx, im, 70, cv.height * 0.44, cv.width - 140, cv.height * 0.42);
+          ctx.restore();
+        }
+        fittedText(ctx, title || data.brand.name, 70, 205, 930, cv.height * 0.26, 91, '#ffffff', 800, 'left');
+        fittedText(ctx, effectiveSub, 70, cv.height - 120, 930, 76, 27, '#f0efff', 500, 'left');
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '800 27px "Noto Sans KR",sans-serif';
+        fittedText(ctx, data.brand.name.toUpperCase(), 70, 85, 690, 38, 27, '#ffffff');
+        ctx.font = '500 21px sans-serif';
+        ctx.fillText(`${String(index + 1).padStart(2, '0')} / ${String(total).padStart(2, '0')}`, cv.width - 145, cv.height - 44);
+      } catch (e) {
+        console.warn('Backdrop draw warning:', e);
+      }
+    } else if (bgImg) {
+      bgImg.onload = () => {
+        if (cv.isConnected) paintCard(cv, t, title, im, sub, index, total, format);
+      };
+    }
+  }
+
+  // Overlay custom logo placement badge or product layer adjustments if configured
   if (layers?.logoLayer && layers.logoLayer.visible === false) {
     ctx.fillStyle = effectiveTemplate.bg;
     ctx.fillRect(60, 45, 700, 50);
@@ -258,37 +307,81 @@ async function applyFreeLayerRevision(options = {}) {
   }
 }
 
-async function triggerContentGenerateAction(jobType) {
+async function triggerContentGenerateAction(jobType = 'image_gen') {
   const c = campaign();
+  const providerName = jobType === 'scene_gen' ? (c.videoProvider || 'Google') : (c.imageProvider || 'OpenAI');
+
+  openModal('AI 이미지 생성 중...', `
+    <div class="progress-modal">
+      <div class="spinner"></div>
+      <h3>${esc(data.brand?.name || '후니웍스')} 맞춤 이미지를 생성하고 있습니다</h3>
+      <p>연결된 AI 모델(${esc(providerName)})에 요청하여 고화질 비주얼을 생성하는 중입니다...</p>
+      <div class="progress-checks">
+        <div>${icon('check')} 브랜드 콘셉트 및 메시지 구도 반영</div>
+        <div>${icon('spark')} ${esc(providerName)} 이미지 생성 API 호출 중</div>
+        <div>${icon('clock')} 배경 레이어 합성 및 자산 자동 등록</div>
+      </div>
+    </div>
+  `);
+
   try {
     const content = await ensureServerContentForChannel(c, channel);
-    if (!content) return;
+    if (!content) {
+      closeModal();
+      return;
+    }
     const videoMode = $('#video-gen-mode')?.value || 'photo_motion';
     const res = await hwApi(`/api/workspaces/${encodeURIComponent(data.id)}/contents/${encodeURIComponent(content.id)}/generate`, {
       method: 'POST',
       body: {
         jobType,
         videoMode,
-        provider: jobType === 'scene_gen' ? (c.videoProvider || 'Google') : (c.imageProvider || 'OpenAI')
+        provider: providerName,
+        allowLiveExecution: true
       }
     });
+
     if (res.content) {
       data.contents = [
         ...(data.contents || []).filter(x => x.id !== res.content.id),
         res.content
       ];
+      // If backdrop image was generated, also cache it
+      if (res.content.layers?.backgroundLayer?.backdropDataUrl) {
+        getCachedBackdrop(res.content.layers.backgroundLayer.backdropDataUrl);
+      }
     }
     if (res.job) {
       data.jobs = [res.job, ...(data.jobs || []).filter(j => j.id !== res.job.id)];
     }
     if (res.settings) hwServer.settings = res.settings;
+
+    // Refresh workspace assets from server if available
+    try {
+      const refreshedWs = await hwApi(`/api/workspaces/${encodeURIComponent(data.id)}`);
+      if (refreshedWs?.uploads?.length) {
+        data.uploads = refreshedWs.uploads;
+      }
+    } catch {}
+
+    persist();
     invalidate();
+    closeModal();
     render();
-    toast(jobType === 'scene_gen' ? '장면별 영상 생성이 완료되었습니다. 이제 MP4 합성을 실행할 수 있습니다.' : '배경 레이어 생성이 완료되었습니다. 제품 원본은 그대로 보존됩니다.');
+    fillCanvases();
+    toast(jobType === 'scene_gen' ? '장면별 영상 생성이 완료되었습니다. 이제 MP4 합성을 실행할 수 있습니다.' : 'AI 이미지 생성이 완료되었습니다! 카드 배경 및 자료실에 자동 반영되었습니다.');
   } catch (err) {
-    toast(err.message);
+    closeModal();
+    console.error('Content generate action error:', err);
+    toast(err.message || '이미지 생성 중 오류가 발생했습니다.');
   }
 }
+
+// Override generatePreview so studio '미리보기 생성' button triggers real AI image generation
+window.generatePreview = async function() {
+  const isVideo = ['youtube', 'reels'].includes(channel);
+  return triggerContentGenerateAction(isVideo ? 'scene_gen' : 'image_gen');
+};
 
 async function triggerVideoSynthesizeMp4Action() {
   const c = campaign();
