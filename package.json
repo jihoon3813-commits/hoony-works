@@ -1,6 +1,7 @@
 {
   "name": "hoony-works-root",
   "private": true,
+  "type": "module",
   "scripts": {
     "start": "npm --prefix hoon/hooniworks-antigravity start",
     "dev": "npm --prefix hoon/hooniworks-antigravity run dev",

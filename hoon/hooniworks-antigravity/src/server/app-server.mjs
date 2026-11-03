@@ -71,11 +71,17 @@ function sendJson(res, status, data) {
   res.end(body);
 }
 
-export function createHooniServer(db = defaultDb) {
-  const server = http.createServer(async (req, res) => {
+export function createRequestHandler(db = defaultDb) {
+  return async (req, res) => {
     try {
       const urlObj = new URL(req.url, 'http://127.0.0.1');
-      const pathname = decodeURIComponent(urlObj.pathname);
+      let pathname = decodeURIComponent(urlObj.pathname);
+
+      // Support Vercel rewrite query parameter (__path) if present
+      const rewrittenPath = urlObj.searchParams.get('__path');
+      if (rewrittenPath !== null && (pathname === '/api' || pathname === '/api/index.mjs' || pathname === '/api/')) {
+        pathname = '/api/' + rewrittenPath.replace(/^\/+/, '');
+      }
 
       if (pathname.startsWith('/api/')) {
         await handleApiRequest(req, res, urlObj, pathname, db);
@@ -120,9 +126,11 @@ export function createHooniServer(db = defaultDb) {
       }
       sendJson(res, 500, { ok: false, error: err?.message || 'Internal Server Error', code: 'INTERNAL_ERROR' });
     }
-  });
+  };
+}
 
-  return server;
+export function createHooniServer(db = defaultDb) {
+  return http.createServer(createRequestHandler(db));
 }
 
 async function handleApiRequest(req, res, urlObj, pathname, db) {

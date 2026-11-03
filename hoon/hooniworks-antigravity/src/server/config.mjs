@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -6,9 +7,13 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT_DIR = path.resolve(__dirname, '../..');
 export const DIST_DIR = path.join(ROOT_DIR, 'dist');
-export const DATA_DIR = process.env.HOONI_DATA_DIR || path.join(ROOT_DIR, 'local-data');
-export const UPLOADS_DIR = process.env.HOONI_UPLOADS_DIR || path.join(ROOT_DIR, 'uploads');
-export const RENDER_DIR = process.env.HOONI_RENDER_DIR || path.join(ROOT_DIR, 'render-output');
+
+const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+const runtimeBaseDir = isServerless ? path.join(os.tmpdir(), 'hooniworks-runtime') : ROOT_DIR;
+
+export const DATA_DIR = process.env.HOONI_DATA_DIR || path.join(runtimeBaseDir, 'local-data');
+export const UPLOADS_DIR = process.env.HOONI_UPLOADS_DIR || path.join(runtimeBaseDir, 'uploads');
+export const RENDER_DIR = process.env.HOONI_RENDER_DIR || path.join(runtimeBaseDir, 'render-output');
 
 for (const dir of [DATA_DIR, UPLOADS_DIR, RENDER_DIR]) {
   fs.mkdirSync(dir, { recursive: true });
