@@ -210,7 +210,7 @@ function openConvexConfigModal() {
   );
 }
 
-// Enhance Settings Page with Convex Dual Deployment section
+// Enhance Settings Page with Convex Cloud section & Live Provider Status
 if (typeof settingsPage === "function") {
   const baseSettingsForConvex = settingsPage;
   settingsPage = function () {
@@ -218,6 +218,23 @@ if (typeof settingsPage === "function") {
     const active = hwConvex.getActiveDeployment();
     const detected = hwConvex.getDetectedEnv();
     const mode = hwConvex.getMode();
+
+    const openai = hwServer?.providers?.OpenAI || { configured: false };
+    const google = hwServer?.providers?.Google || { configured: false };
+
+    // Dynamically reflect Vercel Environment Variable connection status for OpenAI & Google
+    if (openai.configured) {
+      html = html.replace(
+        '<h3>OpenAI</h3><p>GPT · 기획 / 글 / 이미지</p></div><span class="badge">미연결</span></div><div class="flex between" style="margin-top:17px"><span class="small muted" style="font-size:10px">등록된 API 키 없음</span>',
+        `<h3>OpenAI</h3><p>GPT · 기획 / 글 / 이미지</p></div><span class="badge green">Vercel 보안 연결됨</span></div><div class="flex between" style="margin-top:17px"><span class="small muted" style="font-size:10px;color:#2ea043">Vercel 환경변수(OPENAI_API_KEY) 활성화됨</span>`
+      );
+    }
+    if (google.configured) {
+      html = html.replace(
+        '<h3>Google</h3><p>Gemini · 이미지 / 영상</p></div><span class="badge">미연결</span></div><div class="flex between" style="margin-top:17px"><span class="small muted" style="font-size:10px">등록된 API 키 없음</span>',
+        `<h3>Google</h3><p>Gemini · 이미지 / 영상</p></div><span class="badge green">Vercel 보안 연결됨</span></div><div class="flex between" style="margin-top:17px"><span class="small muted" style="font-size:10px;color:#2ea043">Vercel 환경변수(GOOGLE_API_KEY) 활성화됨</span>`
+      );
+    }
 
     const convexCard = `
       <section class="panel" style="margin-top:20px">
@@ -300,6 +317,37 @@ document.addEventListener("click", async (e) => {
     e.preventDefault();
     e.stopImmediatePropagation();
     openConvexConfigModal();
+  } else if (el.dataset.connect) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    const provider = el.dataset.connect;
+    const envKey = provider === "OpenAI" ? "OPENAI_API_KEY" : "GOOGLE_API_KEY";
+    const status = hwServer?.providers?.[provider] || { configured: false };
+    openModal(
+      `${provider} API 키 Vercel 등록 안내`,
+      `<div class="notice">
+        ${icon("lock")}API 키는 브라우저에 직접 입력하지 않고, Vercel 서버의 비밀 환경변수(Environment Variables)에서 안전하게 보관합니다.
+      </div>
+      <div class="task-row" style="margin-top:14px;background:#faf9fd;padding:12px 14px;border-radius:10px">
+        <span class="task-dot">${icon(status.configured ? "check" : "link")}</span>
+        <div class="grow">
+          <strong>현재 연결 상태</strong>
+          <small>${status.configured ? "Vercel 환경변수로 안전하게 연결됨" : "아직 등록된 API 키가 없습니다 (모의 공급자 모드)"}</small>
+        </div>
+        <span class="badge ${status.configured ? "green" : "outline"}">${status.configured ? "연결됨" : "미연결"}</span>
+      </div>
+      <div style="margin-top:16px;font-size:11px;line-height:1.8;color:#554d63">
+        <strong>등록 방법 (Vercel 대시보드):</strong>
+        <ol style="margin:6px 0 0 16px;padding:0">
+          <li><b>Vercel 대시보드</b> 접속 → <code>hoony-works</code> 프로젝트 선택</li>
+          <li>상단 <b>Settings</b> → 좌측 <b>Environment Variables</b> 메뉴 클릭</li>
+          <li><b>Key</b>에 <code>${envKey}</code> 입력</li>
+          <li><b>Value</b>에 발급받은 API 키 붙여넣기 후 <b>Save</b></li>
+          <li>상단 <b>Deployments</b>에서 최신 배포 <b>Redeploy</b> 클릭 시 즉시 활성화됩니다.</li>
+        </ol>
+      </div>`,
+      `<button class="btn primary" data-act="close-modal">확인</button>`
+    );
   } else if (a === "convex-save-mode") {
     e.preventDefault();
     e.stopImmediatePropagation();
