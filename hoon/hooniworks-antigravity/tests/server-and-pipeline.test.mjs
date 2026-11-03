@@ -28,7 +28,14 @@ async function api(pathname, { method = 'GET', body, user = 'user-jh', raw = fal
 }
 
 try {
-  // 1. Session & Initial 120pie Workspace Isolation
+  // 1. Session & Initial 120pie Workspace Isolation & Convex Dual Deployment
+  const convexCfg = await api('/api/convex-config');
+  assert.equal(convexCfg.status, 200);
+  assert.equal(convexCfg.data.devDeployment.id, 'zealous-ferret-311');
+  assert.equal(convexCfg.data.devDeployment.url, 'https://zealous-ferret-311.convex.cloud');
+  assert.equal(convexCfg.data.prodDeployment.id, 'bold-labrador-248');
+  assert.equal(convexCfg.data.prodDeployment.url, 'https://bold-labrador-248.convex.cloud');
+
   const sess = await api('/api/session');
   assert.equal(sess.status, 200);
   assert.equal(sess.data.user.id, 'user-jh');

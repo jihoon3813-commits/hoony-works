@@ -9,7 +9,11 @@ import {
   encryptSecret,
   signStatePayload,
   verifyStatePayload,
-  getProviderConnectionStatus
+  getProviderConnectionStatus,
+  CONVEX_DEV_URL,
+  CONVEX_PROD_URL,
+  IS_PRODUCTION,
+  DEFAULT_CONVEX_URL
 } from './config.mjs';
 import {
   HttpError,
@@ -142,6 +146,28 @@ async function handleApiRequest(req, res, urlObj, pathname, db) {
   const currentUser = db.users.find(u => u.id === userId) || null;
 
   // 1. Session & Provider Status
+  if (method === 'GET' && pathname === '/api/convex-config') {
+    sendJson(res, 200, {
+      ok: true,
+      isProduction: IS_PRODUCTION,
+      environment: IS_PRODUCTION ? 'production' : 'development',
+      devDeployment: {
+        id: 'zealous-ferret-311',
+        name: '개발 서버 (311)',
+        url: CONVEX_DEV_URL,
+        role: 'development'
+      },
+      prodDeployment: {
+        id: 'bold-labrador-248',
+        name: '운영 서버 (248)',
+        url: CONVEX_PROD_URL,
+        role: 'production'
+      },
+      activeUrl: DEFAULT_CONVEX_URL
+    });
+    return;
+  }
+
   if (method === 'GET' && pathname === '/api/session') {
     if (!currentUser) throw new HttpError(401, '로그인이 필요합니다.', 'UNAUTHORIZED');
     const accessibleIds = new Set(

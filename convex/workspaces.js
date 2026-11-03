@@ -10,7 +10,10 @@ export const listWorkspaces = query({
 
 // Hydrate full workspace state (campaigns, assets, templates, publications, concepts, contents)
 export const getFullWorkspace = query({
-  args: { workspaceId: v.string() },
+  args: {
+    workspaceId: v.string(),
+    _meta: v.optional(v.any()),
+  },
   handler: async (ctx, args) => {
     const ws = await ctx.db
       .query("workspaces")
@@ -107,6 +110,7 @@ export const bulkSyncFromClient = mutation({
   args: {
     workspaces: v.array(v.any()),
     settings: v.optional(v.any()),
+    _meta: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
     const now = new Date().toISOString();
