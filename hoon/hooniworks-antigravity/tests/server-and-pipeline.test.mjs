@@ -432,6 +432,42 @@ try {
   assert.ok(studioHtml.includes('디자인 콘셉트 3안 기획 · 선택'), 'Studio must render 3-concept comparison section');
   assert.ok(studioHtml.includes('4대 분리 레이어 편집'), 'Studio must render separated layer inspector');
 
+  // Test empty workspace rendering in UI
+  vm.runInContext('works.workspaces=[];works.activeId=null;data=null;', ctx);
+  for (const r of ['dashboard', 'products', 'workspace', 'studio', 'campaigns', 'assets', 'templates', 'brand', 'publish', 'settings']) {
+    const emptyHtml = vm.runInContext(`route=${JSON.stringify(r)};render();document.querySelector('#app').innerHTML`, ctx);
+    assert.ok(emptyHtml.length > 50, `Route ${r} must render safely even with 0 workspaces`);
+  }
+
+  // 12. Workspace Deletion & Server Clear-All API
+  // Create a second workspace to test individual deletion
+  const newWsRes = await api('/api/workspaces', {
+    method: 'POST',
+    body: { name: '삭제 테스트 상품' }
+  });
+  assert.equal(newWsRes.status, 201);
+  const toDeleteId = newWsRes.data.workspace.id;
+
+  const delWsRes = await api(`/api/workspaces/${toDeleteId}`, { method: 'DELETE' });
+  assert.equal(delWsRes.status, 200);
+  assert.equal(delWsRes.data.deletedWorkspaceId, toDeleteId);
+
+  // Clear all workspaces on server
+  const clearRes = await api('/api/workspaces/clear-all', { method: 'POST' });
+  assert.equal(clearRes.status, 200);
+  assert.equal(clearRes.data.ok, true);
+
+  const listAfterClear = await api('/api/workspaces');
+  assert.equal(listAfterClear.status, 200);
+  assert.equal(listAfterClear.data.workspaces.length, 0);
+
+  // Verify production seed creates completely empty database
+  const { createSeedDatabase } = await import('../src/server/db.mjs');
+  const prodSeed = createSeedDatabase(true);
+  assert.equal(prodSeed.workspaces.length, 0);
+  assert.equal(prodSeed.campaigns.length, 0);
+  assert.equal(prodSeed.assets.length, 0);
+
   console.log('PASS: server workspace isolation, cross-workspace rejection, upload byte validation, SSRF protection, browser import deduplication, 3-concept distinct planning, free layer editing & approval invalidation, MP4 synthesis, per-workspace OAuth, publication reconciliation, and modular UI rendering.');
 } finally {
   server.close();

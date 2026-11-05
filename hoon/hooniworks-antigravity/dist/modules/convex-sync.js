@@ -396,10 +396,31 @@ document.addEventListener("click", async (e) => {
     e.stopImmediatePropagation();
     const active = hwConvex.getActiveDeployment();
     try {
+      // 1. Clear Convex cloud
       await hwConvex.call("mutation", "workspaces:clearAllData", {});
+
+      // 2. Clear Vercel server API
+      if (typeof hwApi === "function") {
+        try {
+          await hwApi("/api/workspaces/clear-all", { method: "POST" });
+        } catch (serverErr) {
+          console.warn("Server reset warning:", serverErr);
+        }
+      }
+
+      // 3. Clear local storage & memory state
+      if (typeof works === "object") {
+        works.workspaces = [];
+        works.activeId = null;
+        data = null;
+        localStorage.removeItem("hooniworks-workspaces-v1");
+        localStorage.removeItem("120studio-design-v1");
+      }
+
       closeModal();
-      toast(`[${active.shortName}] 클라우드 데이터가 초기화되었습니다.`);
-      render();
+      if (typeof navigate === "function") navigate("dashboard");
+      toast(`[${active.shortName}] 및 운영 서버 데이터가 모두 초기화되었습니다.`);
+      if (typeof render === "function") render();
     } catch (err) {
       toast("초기화 실패: " + err.message);
     }

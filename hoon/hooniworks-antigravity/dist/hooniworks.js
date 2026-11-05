@@ -6,8 +6,13 @@ const PIE_ID = 'brand-120pie';
 const pieCatalog = structuredClone(products);
 const emptyLinks = () => ({website:'',instagram:'',kakao:'',blog:'',youtube:''});
 const emptyAccounts = () => ({instagram:'',kakao:'',blog:'',youtube:''});
-const isPie = () => data.id === PIE_ID;
-const exportPrefix = () => (data.brand.name.replace(/[^a-zA-Z0-9가-힣_-]/g,'-').slice(0,50) || 'hooniworks');
+function isProdSite() {
+  if (typeof window === "undefined" || !window.location) return false;
+  const host = (window.location.hostname || window.location.host || "").toLowerCase();
+  return host === "hoony-works.vercel.app";
+}
+const isPie = () => Boolean(data && data.id === PIE_ID);
+const exportPrefix = () => (data?.brand?.name ? data.brand.name.replace(/[^a-zA-Z0-9가-힣_-]/g,'-').slice(0,50) : 'hooniworks');
 const initialMark = name => Array.from(name || 'HW').slice(0,2).join('').toUpperCase();
 const validColor = c => /^#[a-f\d]{6}$/i.test(c || '') ? c : '#7661dc';
 function placeholderImage(color='#7661dc') {
@@ -29,47 +34,82 @@ try {
   const saved = localStorage.getItem(WORKS_KEY);
   if (saved) {
     works = JSON.parse(saved);
-    if (works.version !== 1 || !Array.isArray(works.workspaces) || !works.workspaces.length || works.workspaces.some(w=>!w.id||!w.brand?.name)) throw Error('Invalid workspace file');
+    if (works.version !== 1 || !Array.isArray(works.workspaces)) throw Error('Invalid workspace file');
   }
 } catch {
-  storageWarning='저장된 후니웍스 데이터를 읽지 못했습니다. 원본은 보존하고 120pie 화면을 열었습니다.';
+  storageWarning='저장된 후니웍스 데이터를 읽지 못했습니다. 원본은 보존하고 새 화면을 열었습니다.';
 }
-if (!works || storageWarning) works = {version:1,activeId:PIE_ID,settings:{budget:data.budget||50000,retries:data.retries??2},workspaces:[{...data,id:PIE_ID,createdAt:new Date().toISOString(),catalog:structuredClone(pieCatalog)}]};
+
+// In production, if the only workspace stored is brand-120pie (the old demo sample), auto-purge it
+if (isProdSite() && works?.workspaces?.length === 1 && works.workspaces[0].id === PIE_ID) {
+  works = { version: 1, activeId: null, settings: { budget: 50000, retries: 2 }, workspaces: [] };
+  localStorage.removeItem(WORKS_KEY);
+  localStorage.removeItem('120studio-design-v1');
+}
+
+if (!works || storageWarning) {
+  if (isProdSite()) {
+    works = { version: 1, activeId: null, settings: { budget: 50000, retries: 2 }, workspaces: [] };
+  } else {
+    works = { version: 1, activeId: PIE_ID, settings: { budget: data?.budget || 50000, retries: data?.retries ?? 2 }, workspaces: [{ ...data, id: PIE_ID, createdAt: new Date().toISOString(), catalog: structuredClone(pieCatalog) }] };
+  }
+}
+
 works.workspaces.forEach(normalizeWorkspace);
-works.settings ||= {budget:50000,retries:2};
-works.activeId = works.workspaces.some(w=>w.id===works.activeId) ? works.activeId : works.workspaces[0].id;
-data = works.workspaces.find(w=>w.id===works.activeId);
+works.settings ||= { budget: 50000, retries: 2 };
+works.activeId = works.workspaces.some(w => w.id === works.activeId) ? works.activeId : (works.workspaces[0]?.id || null);
+data = works.workspaces.find(w => w.id === works.activeId) || null;
+
 function activateCatalog() {
-  const list=data.catalog.length?data.catalog:[{id:'primary',name:data.brand.name,img:placeholderImage(data.brand.color),placeholder:true}];
-  products.splice(0,products.length,...list);
-  data.budget=works.settings.budget;data.retries=works.settings.retries;
+  if (!data) {
+    products.splice(0, products.length);
+    return;
+  }
+  const list = data.catalog?.length ? data.catalog : [{ id: 'primary', name: data.brand.name, img: placeholderImage(data.brand.color), placeholder: true }];
+  products.splice(0, products.length, ...list);
+  data.budget = works.settings.budget;
+  data.retries = works.settings.retries;
 }
 activateCatalog();
-current=data.campaigns[0]?.id||null;
+
+current = data?.campaigns?.[0]?.id || null;
 function draftFallback() {
-  return {id:'',name:'새로운 캠페인',product:products[0].id,audience:'consumer',status:'초안',channels:channels.map(c=>c.id),titles:['새로운 가능성,\n우리의 이야기.','고객의 일상에\n더하는 가치.','상품의 특징을\n명확하게.','나에게 맞는\n선택을 찾아요.',data.brand.name+'\n지금 만나보세요.'],caption:'',template:'yellow',designMode:'creative',textProvider:'OpenAI',imageProvider:'OpenAI',videoProvider:'Google'};
+  const brandName = data?.brand?.name || '내 브랜드';
+  return { id: '', name: '새로운 캠페인', product: products[0]?.id || 'primary', audience: 'consumer', status: '초안', channels: channels.map(c => c.id), titles: ['새로운 가능성,\n우리의 이야기.', '고객의 일상에\n더하는 가치.', '상품의 특징을\n명확하게.', '나에게 맞는\n선택을 찾아요.', brandName + '\n지금 만나보세요.'], caption: '', template: 'yellow', designMode: 'creative', textProvider: 'OpenAI', imageProvider: 'OpenAI', videoProvider: 'Google' };
 }
-campaign=()=>data.campaigns.find(c=>c.id===current)||data.campaigns[0]||draftFallback();
-prod=()=>{
-  const c=campaign(),a=[...products,...data.uploads].find(p=>p.id===(c.assetId||c.product))||products[0];
-  return {...a,img:assetSource(a)};
+campaign = () => (data ? (data.campaigns.find(c => c.id === current) || data.campaigns[0] || draftFallback()) : draftFallback());
+prod = () => {
+  if (!data) return { id: 'primary', name: '상품', img: '', placeholder: true };
+  const c = campaign(), a = [...products, ...(data.uploads || [])].find(p => p.id === (c.assetId || c.product)) || products[0] || { id: 'primary', name: data.brand.name, img: placeholderImage(data.brand.color), placeholder: true };
+  return { ...a, img: assetSource(a) };
 };
-persist=function() {
-  if(storageWarning){toast('기존 저장 데이터를 보호하기 위해 저장을 중단했습니다. 브라우저 저장 데이터를 확인해 주세요.');return false;}
+
+persist = function() {
+  if (storageWarning) { toast('기존 저장 데이터를 보호하기 위해 저장을 중단했습니다. 브라우저 저장 데이터를 확인해 주세요.'); return false; }
   try {
-    works.settings={...works.settings,budget:data.budget,retries:data.retries};
-    const i=works.workspaces.findIndex(w=>w.id===data.id); if(i>=0)works.workspaces[i]=data;
-    localStorage.setItem(WORKS_KEY,JSON.stringify(works));return true;
-  }catch{toast('브라우저 저장 공간이 부족합니다. 변경 내용을 저장하지 못했습니다.');return false;}
+    works.settings = { ...works.settings, budget: data?.budget || works.settings.budget, retries: data?.retries ?? works.settings.retries };
+    if (data) {
+      const i = works.workspaces.findIndex(w => w.id === data.id);
+      if (i >= 0) works.workspaces[i] = data;
+    }
+    localStorage.setItem(WORKS_KEY, JSON.stringify(works));
+    return true;
+  } catch {
+    toast('브라우저 저장 공간이 부족합니다. 변경 내용을 저장하지 못했습니다.');
+    return false;
+  }
 };
-if(!storageWarning)persist();
+if (!storageWarning) persist();
 const genericNames=['브랜드 시그니처','내추럴 세이지','클린 아이보리','볼드 타이포','상품 포커스','브랜드 포스트카드','소프트 컬렉션','시즌 스포트라이트','서비스 가이드'];
-allTemplates=()=>[...baseTemplates.map((t,i)=>isPie()?t:({...t,name:genericNames[i],subtitle:i===3?data.brand.cta||'지금, 자세히 알아보세요.':'우리 브랜드의 가치를 전합니다.',...(i===0?{bg:data.brand.color,ink:'#262438',accent:'#ffffff'}:{})})),...data.templates];
-allAssets=()=>[
-  ...data.catalog.filter(p=>!p.placeholder).map(p=>({...p,role:'product',menu:p.name,tags:'실제 제품 사진',type:'제품 원본'})),
-  ...(isPie()?[{id:'lifestyle',name:'애플파이와 라떼',img:'assets/lifestyle.webp',role:'reference',type:'생성 연출 이미지',tags:'분위기 참고'}]:[]),
-  ...data.uploads.map(a=>({...a,role:a.role||'reference'}))
-];
+allTemplates=()=>[...baseTemplates.map((t,i)=>isPie()?t:({...t,name:genericNames[i],subtitle:i===3?data?.brand?.cta||'지금, 자세히 알아보세요.':'우리 브랜드의 가치를 전합니다.',...(i===0?{bg:data?.brand?.color||'#7661dc',ink:'#262438',accent:'#ffffff'}:{})})),...(data?.templates||[])];
+allAssets=()=>{
+  if(!data)return [];
+  return [
+    ...data.catalog.filter(p=>!p.placeholder).map(p=>({...p,role:'product',menu:p.name,tags:'실제 제품 사진',type:'제품 원본'})),
+    ...(isPie()?[{id:'lifestyle',name:'애플파이와 라떼',img:'assets/lifestyle.webp',role:'reference',type:'생성 연출 이미지',tags:'분위기 참고'}]:[]),
+    ...data.uploads.map(a=>({...a,role:a.role||'reference'}))
+  ];
+};
 function switchWorkspace(id,next='workspace') {
   const target=works.workspaces.find(w=>w.id===id); if(!target)return;
   if(!persist())return;
@@ -78,28 +118,68 @@ function switchWorkspace(id,next='workspace') {
   filter='all';templateFilter='전체';templateSearch='';assetFilter='all';templateDraft=null;
   persist();navigate(next);restoreAssets();
 }
+function emptyNoWorkspaceView(title='상품 작업실') {
+  return `${pageHead(title, '먼저 상품·브랜드를 등록해 주세요.')}
+  <section class="hw-empty panel">
+    <span class="empty-orb">${icon('layers')}</span>
+    <span class="eyebrow">NO ACTIVE WORKSPACE</span>
+    <h2>선택된 상품·브랜드가 없습니다.</h2>
+    <p>상품마다 독립된 작업실에서 캠페인, 이미지 자료, 채널 설정을 관리할 수 있습니다.</p>
+    <button class="btn primary" data-act="product-new">${icon('plus')}첫 상품 추가하기</button>
+    <button class="btn ghost" data-route="dashboard">전체 대시보드로 이동 ${icon('arrow')}</button>
+  </section>`;
+}
 const workspaceNav=[['workspace','grid','상품 대시보드'],['studio','spark','콘텐츠 제작'],['campaigns','folder','캠페인'],['assets','image','브랜드 자료실'],['templates','layers','디자인 템플릿'],['publish','upload','게시 관리'],['brand','leaf','브랜드 · 채널 설정']];
 shell=function(content) {
-  const global=['dashboard','products','settings'].includes(route), title=({dashboard:'전체 대시보드',products:'상품 · 브랜드',settings:'API 및 사용 설정'}[route])||workspaceNav.find(n=>n[0]===route)?.[2]||'후니웍스';
-  return `<div class="mobile-overlay ${mobileOpen?'show':''}" data-act="menu-close"></div><aside class="sidebar ${mobileOpen?'open':''}"><a href="#dashboard" class="brandmark hw-brandmark"><span class="hw-logo">h<span>w</span><i></i></span><div><div class="studio">hooniworks<span class="brand-period">.</span></div><div class="byline">후니웍스 · CONTENT SUITE</div></div></a><div class="nav-label hw-first-label">HOONIWORKS</div><nav class="nav">${[['dashboard','grid','전체 대시보드'],['products','layers','상품 · 브랜드']].map(([r,i,n])=>`<button data-route="${r}" class="${route===r?'active':''}">${icon(i)}${n}${r==='products'?`<span class="nav-count">${works.workspaces.length}</span>`:''}</button>`).join('')}</nav><div class="divider"></div><div class="nav-label">CURRENT WORKSPACE</div><button class="brand-selector" data-act="brand-switch" aria-label="상품 워크스페이스 전환"><span class="brand-avatar" style="background:${data.brand.color}22;color:#37333f">${isPie()?'120':esc(initialMark(data.brand.name))}</span><span class="grow"><strong>${esc(data.brand.name)}</strong><small>${esc(data.brand.category)}</small></span>${icon('down')}</button><nav class="nav workspace-nav">${workspaceNav.map(([r,i,n])=>`<button data-route="${r}" class="${route===r?'active':''}">${icon(i)}${n}${r==='campaigns'?`<span class="nav-count">${data.campaigns.length}</span>`:''}</button>`).join('')}</nav><div class="sidebar-bottom"><nav class="nav"><button data-route="settings" class="${route==='settings'?'active':''}">${icon('settings')}API 및 사용 설정</button></nav><div class="profile"><span class="avatar">JH</span><div class="grow"><strong>후니의 워크스페이스</strong><small>브라우저에 작업 저장</small></div><button class="icon-btn" data-act="help" aria-label="후니웍스 사용 안내">${icon('help')}</button></div></div></aside><main class="main"><header class="topbar"><div class="flex crumb"><button class="icon-btn mobile-menu" data-act="menu" aria-label="메뉴 열기">${icon('menu')}</button><span>${global?'후니웍스':esc(data.brand.name)}</span>${icon('chevron')}<strong>${title}</strong></div><div class="flex top-actions"><span class="preview">${global?'멀티 브랜드 콘텐츠 작업실':'현재 상품에만 저장'}</span><span class="badge outline"><i class="dot"></i>API 미연결</span><button class="icon-btn" data-act="help" aria-label="도움말">${icon('help')}</button></div></header><div class="page">${!global?`<div class="workspace-context"><span class="context-dot" style="background:${data.brand.color}"></span><strong>${esc(data.brand.name)}</strong><span>상품 워크스페이스</span><button data-act="brand-switch">상품 전환 ${icon('down')}</button></div>`:''}${storageWarning?`<div class="notice">${esc(storageWarning)}</div>`:''}${content}<footer class="footnote"><span>HOONIWORKS · IDEAS INTO CONTENT</span><span>브라우저 저장 · 생성 API / 자동 게시 미연결</span></footer></div></main>`;
+  const global = !data || ['dashboard','products','settings'].includes(route), title = ({dashboard:'전체 대시보드',products:'상품 · 브랜드',settings:'API 및 사용 설정'}[route]) || workspaceNav.find(n=>n[0]===route)?.[2] || '후니웍스';
+  return `<div class="mobile-overlay ${mobileOpen?'show':''}" data-act="menu-close"></div><aside class="sidebar ${mobileOpen?'open':''}"><a href="#dashboard" class="brandmark hw-brandmark"><span class="hw-logo">h<span>w</span><i></i></span><div><div class="studio">hooniworks<span class="brand-period">.</span></div><div class="byline">후니웍스 · CONTENT SUITE</div></div></a><div class="nav-label hw-first-label">HOONIWORKS</div><nav class="nav">${[['dashboard','grid','전체 대시보드'],['products','layers','상품 · 브랜드']].map(([r,i,n])=>`<button data-route="${r}" class="${route===r?'active':''}">${icon(i)}${n}${r==='products'?`<span class="nav-count">${works.workspaces.length}</span>`:''}</button>`).join('')}</nav><div class="divider"></div><div class="nav-label">CURRENT WORKSPACE</div>${data ? `<button class="brand-selector" data-act="brand-switch" aria-label="상품 워크스페이스 전환"><span class="brand-avatar" style="background:${data.brand.color}22;color:#37333f">${isPie()?'120':esc(initialMark(data.brand.name))}</span><span class="grow"><strong>${esc(data.brand.name)}</strong><small>${esc(data.brand.category)}</small></span>${icon('down')}</button><nav class="nav workspace-nav">${workspaceNav.map(([r,i,n])=>`<button data-route="${r}" class="${route===r?'active':''}">${icon(i)}${n}${r==='campaigns'?`<span class="nav-count">${data.campaigns.length}</span>`:''}</button>`).join('')}</nav>` : `<button class="brand-selector" data-act="product-new" style="border:1px dashed #d1c4e9;background:#faf9fd" aria-label="새 상품 추가"><span class="brand-avatar" style="background:#efe9fb;color:#6e58cd">+</span><span class="grow"><strong>새 상품 등록하기</strong><small>상품을 추가해 시작하세요</small></span>${icon('arrow')}</button>`}<div class="sidebar-bottom"><nav class="nav"><button data-route="settings" class="${route==='settings'?'active':''}">${icon('settings')}API 및 사용 설정</button></nav><div class="profile"><span class="avatar">JH</span><div class="grow"><strong>후니의 워크스페이스</strong><small>${works.workspaces.length ? '브라우저 및 클라우드 동기화' : '클라우드 준비됨'}</small></div><button class="icon-btn" data-act="help" aria-label="후니웍스 사용 안내">${icon('help')}</button></div></div></aside><main class="main"><header class="topbar"><div class="flex crumb"><button class="icon-btn mobile-menu" data-act="menu" aria-label="메뉴 열기">${icon('menu')}</button><span>${global || !data ? '후니웍스' : esc(data.brand.name)}</span>${icon('chevron')}<strong>${title}</strong></div><div class="flex top-actions"><span class="preview">${global || !data ? '멀티 브랜드 콘텐츠 작업실' : '현재 상품에만 저장'}</span><span class="badge outline"><i class="dot"></i>API 연동됨</span><button class="icon-btn" data-act="help" aria-label="도움말">${icon('help')}</button></div></header><div class="page">${!global && data ? `<div class="workspace-context"><span class="context-dot" style="background:${data.brand.color}"></span><strong>${esc(data.brand.name)}</strong><span>상품 워크스페이스</span><button data-act="brand-switch">상품 전환 ${icon('down')}</button></div>` : ''}${storageWarning ? `<div class="notice">${esc(storageWarning)}</div>` : ''}${content}<footer class="footnote"><span>HOONIWORKS · IDEAS INTO CONTENT</span><span>운영 환경 · AI 실시간 생성 지원</span></footer></div></main>`;
 };
 function statsHTML(items) {return `<div class="stats hw-stats">${items.map(([n,label,sub,ic])=>`<div class="stat"><div><div class="stat-label">${label}</div><div class="stat-value">${n}</div><p class="stat-detail">${sub}</p></div><span class="stat-icon">${icon(ic)}</span></div>`).join('')}</div>`;}
 function productTile(w) {
   const isFirst=w.id===PIE_ID, review=w.campaigns.filter(c=>c.status==='검토 대기').length;
-  return `<article class="product-tile" style="--product-color:${w.brand.color}"><div class="product-tile-visual ${isFirst?'pie-tile':''}"><div class="product-tile-top"><span class="badge">${esc(w.brand.category)}</span><span class="tile-number">${String(works.workspaces.indexOf(w)+1).padStart(2,'0')}</span></div><strong class="product-tile-name">${esc(w.brand.name)}</strong><span class="product-visual-caption">${isFirst?'120겹의 이야기, 더 많은 채널로.':'새로운 상품, 새로운 이야기.'}</span>${isFirst?'<img src="assets/apple.webp" alt="120pie 애플파이">':`<span class="abstract-initial" aria-hidden="true">${esc(initialMark(w.brand.name))}</span>`}</div><div class="product-tile-body"><p>${esc(w.brand.description||'브랜드 기준과 자료를 등록하고 첫 콘텐츠를 준비하세요.')}</p><div class="product-tile-counts"><span>캠페인 <b>${w.campaigns.length}</b></span><span>검토 대기 <b>${review}</b></span><span>채널 주소 <b>${Object.entries(w.brand.links).filter(([k,v])=>k!=='website'&&v).length}</b></span></div><button class="btn full" data-workspace="${w.id}">워크스페이스 열기 ${icon('arrow')}</button></div></article>`;
+  return `<article class="product-tile" style="--product-color:${w.brand.color}"><div class="product-tile-visual ${isFirst?'pie-tile':''}"><div class="product-tile-top"><span class="badge">${esc(w.brand.category)}</span><button class="icon-btn" data-act="workspace-delete" data-workspace-id="${w.id}" title="상품 삭제" style="color:#c53030;background:#ffffffcc;padding:4px 6px;border-radius:6px;border:0;cursor:pointer">${icon('close')}</button></div><strong class="product-tile-name">${esc(w.brand.name)}</strong><span class="product-visual-caption">${isFirst?'120겹의 이야기, 더 많은 채널로.':'새로운 상품, 새로운 이야기.'}</span>${isFirst?'<img src="assets/apple.webp" alt="120pie 애플파이">':`<span class="abstract-initial" aria-hidden="true">${esc(initialMark(w.brand.name))}</span>`}</div><div class="product-tile-body"><p>${esc(w.brand.description||'브랜드 기준과 자료를 등록하고 첫 콘텐츠를 준비하세요.')}</p><div class="product-tile-counts"><span>캠페인 <b>${w.campaigns.length}</b></span><span>검토 대기 <b>${review}</b></span><span>채널 주소 <b>${Object.entries(w.brand.links).filter(([k,v])=>k!=='website'&&v).length}</b></span></div><button class="btn full" data-workspace="${w.id}">워크스페이스 열기 ${icon('arrow')}</button></div></article>`;
 }
 function addTile() {return `<button class="add-product-tile" data-act="product-new"><span class="add-orb">${icon('plus')}</span><strong>다음 상품을 시작하세요</strong><p>식품, 서비스, 멤버십까지.<br>상품마다 독립된 작업 공간을 만드세요.</p><span class="add-link">새 상품 · 브랜드 추가 ${icon('arrow')}</span></button>`;}
 dashboard=function() {
   const all=works.workspaces.flatMap(w=>w.campaigns.map(c=>({c,w}))),pending=all.filter(({c})=>c.status==='검토 대기').length;
+  if (!works.workspaces.length) {
+    return `${pageHead('아이디어는 자유롭게. 마케팅은 한곳에서.', '운영 서버 데이터가 깨끗하게 초기화되었습니다. 나만의 첫 상품을 등록해 보세요.', `<button class="btn primary" data-act="product-new">${icon('plus')}첫 상품 추가</button>`, 'YOUR MARKETING CONTENT SUITE')}
+    <section class="hw-hero">
+      <div>
+        <span class="eyebrow">A FRESH START · 운영 환경</span>
+        <h2>나만의 상품과 브랜드로<br>마케팅 콘텐츠를 시작하세요.</h2>
+        <p>기획부터 OpenAI DALL-E 3 & Google Imagen 3 실시간 이미지 생성,<br>레이어 편집, MP4 영상 합성까지 후니웍스에서 완성해 보세요.</p>
+        <button class="btn dark" data-act="product-new">${icon('plus')} 첫 상품·브랜드 등록하기 ${icon('arrow')}</button>
+        <span class="hero-detail">운영 서버 준비 완료 · 깨끗한 상태에서 시작</span>
+      </div>
+      <div class="hw-hero-art" aria-hidden="true">
+        <span class="art-orbit orbit-one"></span>
+        <span class="art-orbit orbit-two"></span>
+        <div class="suite-center">h<span>w</span><i></i></div>
+        <span class="floating-service service-plan">${icon('spark')}AI 기획 & 카피</span>
+        <span class="floating-service service-image">${icon('image')}DALL-E 3 & Imagen 3</span>
+        <span class="floating-service service-video">${icon('video')}숏폼 스토리</span>
+        <span class="floating-service service-publish">${icon('upload')}채널별 게시</span>
+        <span class="art-caption">READY FOR YOUR BRAND</span>
+      </div>
+    </section>
+    ${statsHTML([[0, '운영 상품·브랜드', '새 상품을 등록하세요', 'layers'], [0, '전체 캠페인', '첫 캠페인을 기획해 보세요', 'folder'], [0, '검토 대기', '안전한 문구 검토', 'clock'], [0, '게시 준비·기록', '채널별 발행 준비', 'upload']])}
+    <div class="section-title">
+      <div><h2>우리의 상품, 각자의 이야기</h2><p>상품을 추가하면 독립된 작업 공간이 생성됩니다.</p></div>
+    </div>
+    <div class="product-grid">${addTile()}</div>`;
+  }
   return `${pageHead('아이디어는 자유롭게. 마케팅은 한곳에서.','여러 상품의 이야기를 만들고, 각각의 채널로 연결하세요.',`<button class="btn primary" data-act="product-new">${icon('plus')}상품 추가</button>`,'YOUR MARKETING CONTENT SUITE')}<section class="hw-hero"><div><span class="eyebrow">MANY BRANDS. ONE WORKSPACE.</span><h2>상품은 늘어나도,<br>콘텐츠의 시작은 <em>후니웍스.</em></h2><p>브랜드를 이해하는 기획부터 이미지와 영상,<br>채널별 게시 준비까지 이어지는 마케팅 작업실.</p><button class="btn dark" data-workspace="${data.id}" data-next="studio">${esc(data.brand.name)} 콘텐츠 만들기 ${icon('arrow')}</button><span class="hero-detail">현재 선택한 상품으로 시작</span></div><div class="hw-hero-art" aria-hidden="true"><span class="art-orbit orbit-one"></span><span class="art-orbit orbit-two"></span><div class="suite-center">h<span>w</span><i></i></div><span class="floating-service service-plan">${icon('spark')}기획 & 카피</span><span class="floating-service service-image">${icon('image')}이미지 디자인</span><span class="floating-service service-video">${icon('video')}숏폼 스토리</span><span class="floating-service service-publish">${icon('upload')}채널별 게시</span><span class="art-caption">YOUR NEXT GOOD IDEA STARTS HERE</span></div></section>${statsHTML([[works.workspaces.length,'운영 상품·브랜드','상품별 독립 워크스페이스','layers'],[all.length,'전체 캠페인','샘플 · 내 초안 포함','folder'],[pending,'검토 대기','문구와 디자인 확인','clock'],[works.workspaces.reduce((n,w)=>n+w.posts.length,0),'게시 준비·기록','수동 기록 포함 · 외부 자동 전송 없음','upload']])}<div class="section-title"><div><h2>우리의 상품, 각자의 이야기</h2><p>브랜드 설정부터 자료와 콘텐츠까지, 상품별로 이어서 작업하세요.</p></div><button class="btn ghost sm" data-route="products">전체 상품 ${icon('arrow')}</button></div><div class="product-grid">${works.workspaces.slice(0,3).map(productTile).join('')}${addTile()}</div><section class="hw-process"><div><span class="eyebrow">FROM IDEA TO CHANNEL</span><h2>하나의 흐름으로 완성하는 콘텐츠</h2></div><div class="process-steps">${[['01','브랜드 이해','상품 정보 · 실제 사진'],['02','콘텐츠 기획','고객 · 목적 · 콘셉트'],['03','콘텐츠 제작','이미지 · 카피 · 장면표'],['04','게시 준비','채널별 검토 · 내보내기']].map(([n,t,s])=>`<div><span>${n}</span><strong>${t}</strong><small>${s}</small></div>`).join('')}</div></section>${all.length?`<div class="section-title"><div><h2>이어서 작업하기</h2><p>상품을 확인하고 캠페인을 열어보세요.</p></div><span class="badge outline">샘플 포함</span></div><div class="recent-work-list">${all.slice(0,5).map(({c,w})=>`<button data-workspace="${w.id}" data-campaign-id="${c.id}" class="recent-work"><span class="recent-work-icon" style="background:${w.brand.color}22">${icon('folder')}</span><span class="grow"><small>${esc(w.brand.name)}</small><strong>${esc(c.name)}</strong></span><span class="badge ${c.status==='검토 대기'?'yellow':''}">${esc(c.status)}</span>${icon('chevron')}</button>`).join('')}</div>`:''}`;
 };
 function productsPage() {
   return `${pageHead('상품 · 브랜드','상품마다 다른 고객, 다른 이야기. 독립된 작업 공간에서 관리하세요.',`<button class="btn primary" data-act="product-new">${icon('plus')}상품 추가</button>`,'BRAND PORTFOLIO')}<div class="portfolio-toolbar"><span><b>${works.workspaces.length}</b>개의 상품 워크스페이스</span><div class="search-box">${icon('search')}<input id="workspace-search" type="search" aria-label="상품·브랜드 검색" placeholder="상품·브랜드 이름 검색"></div></div><div class="product-grid" id="product-results">${works.workspaces.map(productTile).join('')}${addTile()}</div><div class="notice" style="margin-top:24px">${icon('layers')}캠페인, 이미지, 내 템플릿, 채널 계정과 게시 기록은 각 상품에 따로 저장됩니다. 생성 엔진과 사용 한도는 후니웍스 공통 설정에서 관리합니다.</div>`;
 }
 function emptyCampaignView(title='콘텐츠 제작실') {
-  return `${pageHead(title,esc(data.brand.name)+'의 첫 이야기를 시작해 보세요.')}<section class="hw-empty panel"><span class="empty-orb">${icon('spark')}</span><span class="eyebrow">A FRESH START</span><h2>이 상품의 첫 캠페인을 만들어보세요.</h2><p>누구에게, 무엇을 전할지 정하면<br>상품별로 이미지·게시글·숏폼 장면표를 준비할 수 있어요.</p><button class="btn primary" data-act="new">${icon('plus')}첫 캠페인 만들기</button><button class="btn ghost" data-route="assets">제품 사진 먼저 추가하기 ${icon('arrow')}</button></section>`;
+  const brandName = data?.brand?.name || '상품';
+  return `${pageHead(title,esc(brandName)+'의 첫 이야기를 시작해 보세요.')}<section class="hw-empty panel"><span class="empty-orb">${icon('spark')}</span><span class="eyebrow">A FRESH START</span><h2>이 상품의 첫 캠페인을 만들어보세요.</h2><p>누구에게, 무엇을 전할지 정하면<br>상품별로 이미지·게시글·숏폼 장면표를 준비할 수 있어요.</p><button class="btn primary" data-act="new">${icon('plus')}첫 캠페인 만들기</button><button class="btn ghost" data-route="assets">제품 사진 먼저 추가하기 ${icon('arrow')}</button></section>`;
 }
 function workspacePage() {
+  if (!data) return emptyNoWorkspaceView('상품 대시보드');
   return `${pageHead(esc(data.brand.name),esc(data.brand.description||'브랜드의 첫 콘텐츠를 준비하세요.'),`<button class="btn primary" data-act="new">${icon('plus')}새 캠페인</button>`,esc(data.brand.category)+' WORKSPACE')}<section class="workspace-welcome" style="--product-color:${data.brand.color}"><div><span class="eyebrow">YOUR BRAND. YOUR STORY.</span><h2>이 상품만의 이야기를<br>다양한 콘텐츠로 만들어보세요.</h2><p>${esc(data.brand.audience||'브랜드 설정에서 주요 고객을 정해보세요.')}</p><div class="flex"><button class="btn dark" data-act="new">콘텐츠 기획 시작 ${icon('arrow')}</button><button class="btn" data-route="brand">브랜드 설정</button></div></div>${isPie()?'<img src="assets/apple.webp" alt="애플파이 제품 원본">':`<span class="workspace-monogram" aria-hidden="true">${esc(initialMark(data.brand.name))}</span>`}</section>${statsHTML([[data.campaigns.length,'캠페인','샘플 · 내 초안 포함','folder'],[allAssets().length,'브랜드 자료','제품 · 참고 · 로고','image'],[data.campaigns.filter(c=>c.status==='검토 대기').length,'검토 대기','제품과 문구 확인','clock'],[data.posts.length,'게시 준비·기록','현재 상품 기준','upload']])}<div class="section-title"><div><h2>작업 중인 캠페인</h2><p>현재 상품의 콘텐츠만 표시합니다.</p></div><button class="btn ghost sm" data-route="campaigns">전체 보기 ${icon('arrow')}</button></div>${data.campaigns.length?`<div class="campaign-grid">${data.campaigns.slice(0,3).map(campaignCard).join('')}</div>`:'<div class="empty panel">아직 캠페인이 없어요. 새 캠페인으로 첫 콘텐츠를 준비하세요.</div>'}<div class="workspace-shortcuts">${[['assets','image','브랜드 자료실','실제 사진·참고 이미지 등록'],['brand','leaf','브랜드 · 채널','브랜드 기준과 채널 주소 설정'],['templates','layers','디자인 컬렉션','새 콘셉트와 함께 활용할 디자인']].map(([r,i,t,s])=>`<button class="panel" data-route="${r}">${icon(i)}<strong>${t}</strong><small>${s}</small>${icon('arrow')}</button>`).join('')}</div>`;
 }
 campaignCard=function(c,i) {
@@ -136,6 +216,7 @@ function createCampaign() {
 }
 const workingStudio=studio;
 studio=function() {
+  if(!data)return emptyNoWorkspaceView('콘텐츠 제작실');
   if(!data.campaigns.length)return emptyCampaignView();
   let html=workingStudio(),c=campaign();
   const mode=c.designMode||'template';
@@ -152,8 +233,17 @@ videoPreview=function() {
 };
 blogPreview=function(){return `<article class="blog-preview"><span class="blog-name">${esc(data.brand.name)} · 브랜드 이야기</span><h2 id="blog-heading">${esc(campaign().name)}</h2><img src="${prod().img}" alt="${esc(prod().name)}"><p id="blog-text">${esc(captionFor('blog')).replace(/\n/g,'<br>')}</p></article>`;};
 const baseBrandPage=brandPage;
-brandPage=function(){return baseBrandPage().replace('<div class="brand-form-grid">',`<div class="brand-form-grid"><div class="field"><label for="brand-category">상품 분류</label><input id="brand-category" type="text" maxlength="40" value="${esc(data.brand.category)}"></div><div class="field"><label for="brand-color">브랜드 포인트 색상</label><input id="brand-color" type="color" value="${data.brand.color}"></div><div class="field wide"><label for="brand-audience">주요 고객</label><input id="brand-audience" type="text" maxlength="120" value="${esc(data.brand.audience)}"></div>`);};
+brandPage=function(){
+  if (!data) return emptyNoWorkspaceView('브랜드 · 채널 설정');
+  return baseBrandPage().replace('<div class="brand-form-grid">',`<div class="brand-form-grid"><div class="field"><label for="brand-category">상품 분류</label><input id="brand-category" type="text" maxlength="40" value="${esc(data.brand.category)}"></div><div class="field"><label for="brand-color">브랜드 포인트 색상</label><input id="brand-color" type="color" value="${data.brand.color}"></div><div class="field wide"><label for="brand-audience">주요 고객</label><input id="brand-audience" type="text" maxlength="120" value="${esc(data.brand.audience)}"></div>`)
+    + `<div class="panel" style="margin-top:24px;border:1px solid #fed7d7;background:#fff5f5;padding:16px 20px;border-radius:12px">
+        <h3 style="color:#c53030;margin-top:0">${icon('alert')} 워크스페이스 삭제</h3>
+        <p style="font-size:12px;color:#742a2a;margin:6px 0 14px">현재 상품 [${esc(data.brand.name)}]과 모든 캠페인, 등록된 자료를 완전히 삭제합니다.</p>
+        <button class="btn ghost sm" data-act="workspace-delete" data-workspace-id="${data.id}" style="color:#c53030;border-color:#feb2b2;background:#fff">${icon('trash')} 이 상품 워크스페이스 삭제</button>
+      </div>`;
+};
 saveBrandAll=function(){
+  if(!data){toast('등록된 상품이 없습니다.');return;}
   const name=$('#brand-name').value.trim();
   if(!name){toast('브랜드 이름을 입력해 주세요.');return;}
   if(works.workspaces.some(w=>w.id!==data.id&&w.brand.name.toLocaleLowerCase()===name.toLocaleLowerCase())){toast('다른 상품과 구분할 수 있는 이름을 입력해 주세요.');return;}
@@ -166,37 +256,121 @@ saveBrandAll=function(){
     activateCatalog();render();toast('이 상품의 브랜드와 채널 주소를 저장했어요.');
   }catch(err){toast(err.message);}
 };
+const baseCampaignsPage = campaignsPage;
+campaignsPage = function() {
+  if (!data) return emptyNoWorkspaceView('캠페인 목록');
+  return baseCampaignsPage();
+};
+const baseAssetsPage = assetsPage;
+assetsPage = function() {
+  if (!data) return emptyNoWorkspaceView('브랜드 자료실');
+  return baseAssetsPage();
+};
 const baseSettingsPage=settingsPage;
-settingsPage=function(){return baseSettingsPage().replace('API 및 사용량','API 및 사용 설정').replace('제작에 필요한 엔진과 사용 한도를 관리하세요.','모든 상품에서 공통으로 사용할 제작 엔진과 사용 한도를 관리하세요.').replace('시연 데이터 초기화','현재 상품 초기화').replace('브라우저 시연 데이터','현재 상품 작업 데이터').replace('샘플 캠페인, 수정한 문구, 업로드한 이미지와 설정을 관리합니다.',esc(data.brand.name)+'의 캠페인·자료·내 템플릿·게시 기록을 관리합니다. 브랜드 설정과 다른 상품은 유지됩니다.');};
+settingsPage=function(){
+  const brandName = data?.brand?.name || '현재 상품';
+  const dummyBudget = works?.settings?.budget || 50000;
+  const dummyRetries = works?.settings?.retries ?? 2;
+  const oldData = data;
+  if (!data) data = { budget: dummyBudget, retries: dummyRetries, brand: { name: '후니웍스' } };
+  try {
+    return baseSettingsPage()
+      .replace('API 및 사용량','API 및 사용 설정')
+      .replace('제작에 필요한 엔진과 사용 한도를 관리하세요.','모든 상품에서 공통으로 사용할 제작 엔진과 사용 한도를 관리하세요.')
+      .replace('시연 데이터 초기화','현재 상품 초기화')
+      .replace('브라우저 시연 데이터','현재 상품 작업 데이터')
+      .replace('샘플 캠페인, 수정한 문구, 업로드한 이미지와 설정을 관리합니다.', esc(brandName)+'의 캠페인·자료·내 템플릿·게시 기록을 관리합니다. 브랜드 설정과 다른 상품은 유지됩니다.');
+  } finally {
+    data = oldData;
+  }
+};
 const baseTemplatesPage=templatesPage;
-templatesPage=function(){return baseTemplatesPage().replace('좋은 디자인은 쌓아두고, 새로운 이야기에 다시 꺼내 쓰세요.','템플릿은 제작 방식 중 하나예요. 새 콘셉트 기획과 레퍼런스 활용도 선택할 수 있어요.').replace('매번 새롭게, 언제나 우리답게.','템플릿은 출발점. 가능성은 더 넓게.');};
+templatesPage=function(){
+  if (!data) return emptyNoWorkspaceView('디자인 템플릿');
+  return baseTemplatesPage().replace('좋은 디자인은 쌓아두고, 새로운 이야기에 다시 꺼내 쓰세요.','템플릿은 제작 방식 중 하나예요. 새 콘셉트 기획과 레퍼런스 활용도 선택할 수 있어요.').replace('매번 새롭게, 언제나 우리답게.','템플릿은 출발점. 가능성은 더 넓게.');
+};
 const basePublishPage=publishPage;
-publishPage=function(){return data.campaigns.length?basePublishPage():emptyCampaignView('게시 관리');};
-generatePreview=function(){persist();fillCanvases();toast(campaign().designMode==='template'?'편집 미리보기를 확인해 주세요.':'기획 브리프를 저장했어요. 새 디자인 자동 생성은 API 연결 후 가능합니다.');};
+publishPage=function(){
+  if (!data) return emptyNoWorkspaceView('게시 관리');
+  return data.campaigns.length?basePublishPage():emptyCampaignView('게시 관리');
+};
+generatePreview=function(){
+  if (!data) { toast('먼저 상품을 추가해 주세요.'); return; }
+  persist();fillCanvases();toast(campaign().designMode==='template'?'편집 미리보기를 확인해 주세요.':'기획 브리프를 저장했어요. 새 디자인 자동 생성은 API 연결 후 가능합니다.');
+};
 render=function(){
   const pages={dashboard,products:productsPage,workspace:workspacePage,studio,campaigns:campaignsPage,assets:assetsPage,templates:templatesPage,settings:settingsPage,brand:brandPage,publish:publishPage};
   if(!pages[route])route='dashboard';
   $('#app').innerHTML=shell(pages[route]());fillCanvases();
 };
 function resetCurrentWorkspace() {
+  if (!data) return;
   const old=data, fresh=normalizeWorkspace({id:data.id,createdAt:data.createdAt,brand:structuredClone(data.brand),catalog:structuredClone(data.catalog),budget:data.budget,retries:data.retries});
   data=fresh;if(!persist()){data=old;return;}current=null;navigate('workspace');toast('현재 상품의 작업 데이터를 초기화했어요. 브랜드 설정은 유지됩니다.');
 }
+async function deleteWorkspaceAction(wsId) {
+  if (!wsId) return;
+  const idx = works.workspaces.findIndex(w => w.id === wsId);
+  if (idx === -1) return;
+  const targetName = works.workspaces[idx].brand?.name || '상품';
+  works.workspaces.splice(idx, 1);
+  if (works.activeId === wsId) {
+    works.activeId = works.workspaces[0]?.id || null;
+    data = works.workspaces.find(w => w.id === works.activeId) || null;
+    activateCatalog();
+  }
+  persist();
+
+  if (typeof hwApi === 'function') {
+    try {
+      await hwApi(`/api/workspaces/${wsId}`, { method: 'DELETE' });
+    } catch (e) {
+      console.warn('Server delete error:', e);
+    }
+  }
+
+  if (typeof hwConvex === 'object' && hwConvex.isConfigured()) {
+    try {
+      await hwConvex.call('mutation', 'workspaces:deleteWorkspace', { workspaceId: wsId });
+    } catch (e) {
+      console.warn('Convex delete error:', e);
+    }
+  }
+
+  render();
+  toast(`[${targetName}] 워크스페이스를 삭제했습니다.`);
+}
 // Window capture owns workspace actions before the retained editor handlers run.
-window.addEventListener('click',e=>{
+window.addEventListener('click',async e=>{
   const el=e.target.closest('button,[data-act]');if(!el)return;let handled=true,a=el.dataset.act;
   if(el.dataset.workspace){switchWorkspace(el.dataset.workspace,el.dataset.next||'workspace');if(el.dataset.campaignId){current=el.dataset.campaignId;channel=campaign().channels[0]||'instagram';navigate('studio');}}
   else if(a==='brand-switch')openWorkspacePicker();
   else if(a==='product-new')openNewProduct();
   else if(a==='product-create')createProduct();
   else if(a==='works-campaign-create')createCampaign();
-  else if(!data.campaigns.length&&(el.dataset.useTemplate||el.dataset.assetUse)){newWizard();toast('먼저 이 상품의 캠페인을 만들어 주세요.');}
+  else if(!data||!data.campaigns.length&&(el.dataset.useTemplate||el.dataset.assetUse)){newWizard();toast('먼저 이 상품의 캠페인을 만들어 주세요.');}
   else if(el.dataset.useTemplate){campaign().designMode='template';handled=false;}
   else if(a==='shorten'){
     const c=campaign(),shorten=t=>{const line=t.split('\n')[0];return line.length>22?line.slice(0,22)+'…':line;};
     if(['youtube','reels'].includes(channel)){c.scenes=[...sceneTexts()];c.scenes[sceneIndex]=shorten(c.scenes[sceneIndex]);}else if(channel==='blog')c.name=shorten(c.name);else c.titles[cardIndex]=shorten(c.titles[cardIndex]);invalidate();render();toast('현재 문구를 짧게 정리했어요. 의미가 유지됐는지 확인해 주세요.');
   }
-  else if(a==='reset')openModal('현재 상품의 작업을 초기화할까요?',`<p class="intro"><strong>${esc(data.brand.name)}</strong>의 캠페인, 업로드 자료 목록, 내 템플릿과 게시 기록을 지웁니다. 브랜드·채널 설정, 기본 자료와 다른 상품은 유지됩니다.</p>`,`<button class="btn" data-act="close-modal">취소</button><button class="btn primary" data-act="works-confirm-reset">현재 상품 초기화</button>`);
+  else if(a==='workspace-delete'){
+    const wsId = el.dataset.workspaceId || data?.id;
+    const target = works.workspaces.find(w => w.id === wsId);
+    if (!target) return;
+    openModal(
+      '상품 워크스페이스 삭제',
+      `<p class="intro"><strong>[${esc(target.brand.name)}]</strong> 워크스페이스와 연관된 모든 캠페인, 이미지, 설정이 영구 삭제됩니다.</p><p style="color:#c53030;font-size:12px;margin-top:8px">이 작업은 취소할 수 없습니다.</p>`,
+      `<button class="btn" data-act="close-modal">취소</button>
+       <button class="btn primary" data-act="workspace-confirm-delete" data-workspace-id="${wsId}" style="background:#d93025;border-color:#d93025">삭제 실행</button>`
+    );
+  }
+  else if(a==='workspace-confirm-delete'){
+    const wsId = el.dataset.workspaceId;
+    closeModal();
+    await deleteWorkspaceAction(wsId);
+  }
+  else if(a==='reset')openModal('현재 상품의 작업을 초기화할까요?',`<p class="intro"><strong>${esc(data?.brand?.name||'상품')}</strong>의 캠페인, 업로드 자료 목록, 내 템플릿과 게시 기록을 지웁니다. 브랜드·채널 설정, 기본 자료와 다른 상품은 유지됩니다.</p>`,`<button class="btn" data-act="close-modal">취소</button><button class="btn primary" data-act="works-confirm-reset">현재 상품 초기화</button>`);
   else if(a==='works-confirm-reset')resetCurrentWorkspace();
   else if(a==='help')openModal('후니웍스 사용 안내',`<p class="intro">여러 상품의 마케팅 콘텐츠를 한곳에서 관리하세요.</p>${[['01','상품 추가','상품·브랜드마다 독립된 작업실을 만듭니다.'],['02','브랜드 준비','제품 사진, 브랜드 기준과 채널 주소를 등록합니다.'],['03','콘텐츠 제작','새 콘셉트 · 레퍼런스 · 템플릿 중 출발점을 선택합니다.'],['04','게시 준비','채널별 문구를 검토하고 이미지·본문을 내보냅니다.']].map(([n,t,s])=>`<div class="task-row"><span class="badge">${n}</span><div><strong>${t}</strong><small>${s}</small></div></div>`).join('')}<div class="notice" style="margin-top:20px">현재는 이 브라우저에 작업을 저장합니다. 실제 자동 생성, MP4 제작, 계정 인증과 자동 게시는 아직 연결되지 않았습니다.</div>`);
   else handled=false;

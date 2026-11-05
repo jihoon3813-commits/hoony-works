@@ -46,6 +46,8 @@ async function syncFromServer() {
     hwServer.settings = session.settings || hwServer.settings;
     hwServer.workspacesById.clear();
 
+    const isProd = typeof detectCurrentSiteEnv === 'function' ? detectCurrentSiteEnv() === 'prod' : (typeof window !== 'undefined' && window.location && window.location.hostname === 'hoony-works.vercel.app');
+
     if (Array.isArray(session.workspaces)) {
       for (const sw of session.workspaces) {
         hwServer.workspacesById.set(sw.id, sw);
@@ -62,10 +64,24 @@ async function syncFromServer() {
           localWs.publications = sw.publications || [];
         }
       }
+
+      // If server has NO workspaces and we are in production:
+      if (session.workspaces.length === 0 && isProd) {
+        // If client only has default sample brand-120pie, wipe it to match server
+        if (works?.workspaces?.length === 1 && works.workspaces[0].id === 'brand-120pie') {
+          works.workspaces = [];
+          works.activeId = null;
+          data = null;
+          localStorage.removeItem('hooniworks-workspaces-v1');
+          localStorage.removeItem('120studio-design-v1');
+        }
+      }
     }
-    // Ensure active local workspace also exists on server if user is owner
+    // Ensure active local workspace also exists on server if user is owner (never auto-create demo 120pie on prod)
     if (data && !hwServer.workspacesById.has(data.id) && hwServer.currentUser?.id === 'user-jh') {
-      await ensureWorkspaceOnServer(data);
+      if (!(isProd && data.id === 'brand-120pie')) {
+        await ensureWorkspaceOnServer(data);
+      }
     }
     render();
   } catch {

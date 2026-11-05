@@ -183,6 +183,7 @@ shell = function(content) {
 
 const baseHwStudio = studio;
 studio = function() {
+  if (!data) return typeof emptyNoWorkspaceView === 'function' ? emptyNoWorkspaceView('콘텐츠 제작실') : '';
   if (!data.campaigns.length) return emptyCampaignView();
   let html = baseHwStudio();
   // Inject Concept 3-Proposal Comparison Panel above studio-layout and Layer/Video Inspector inside preview-panel
@@ -199,6 +200,7 @@ studio = function() {
 
 const baseHwBrandPage = brandPage;
 brandPage = function() {
+  if (!data) return typeof emptyNoWorkspaceView === 'function' ? emptyNoWorkspaceView('브랜드 · 채널 설정') : '';
   let html = baseHwBrandPage();
   const connectedCount = ['instagram', 'youtube'].filter(p => getWorkspaceConnection(p).state === 'connected').length;
   html = html.replace('게시 인증 0 / 2', `게시 인증 ${connectedCount} / 2`);
@@ -228,6 +230,7 @@ brandPage = function() {
 
 const baseHwPublishPage = publishPage;
 publishPage = function() {
+  if (!data) return typeof emptyNoWorkspaceView === 'function' ? emptyNoWorkspaceView('게시 관리') : '';
   if (!data.campaigns.length) return emptyCampaignView('게시 관리');
   let html = baseHwPublishPage();
   const c = campaign();

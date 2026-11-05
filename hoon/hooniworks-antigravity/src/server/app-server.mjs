@@ -214,9 +214,25 @@ async function handleApiRequest(req, res, urlObj, pathname, db) {
     return;
   }
 
-  // 2. GET/POST /api/workspaces
+  // 2. GET/POST/DELETE /api/workspaces and /api/workspaces/clear-all
+  if (pathname === '/api/workspaces/clear-all') {
+    if (!currentUser) throw new HttpError(401, '로그인이 필요합니다.', 'UNAUTHORIZED');
+    if (typeof db.clearAllWorkspaces === 'function') {
+      db.clearAllWorkspaces();
+    }
+    sendJson(res, 200, { ok: true, workspaces: [], message: '운영 서버의 모든 작업 데이터가 완전히 초기화되었습니다.' });
+    return;
+  }
+
   if (pathname === '/api/workspaces') {
     if (!currentUser) throw new HttpError(401, '로그인이 필요합니다.', 'UNAUTHORIZED');
+    if (method === 'DELETE') {
+      if (typeof db.clearAllWorkspaces === 'function') {
+        db.clearAllWorkspaces();
+      }
+      sendJson(res, 200, { ok: true, workspaces: [], message: '모든 워크스페이스가 초기화되었습니다.' });
+      return;
+    }
     if (method === 'GET') {
       const accessibleIds = new Set(
         db.memberships.filter(m => m.userId === currentUser.id).map(m => m.workspaceId)
@@ -364,6 +380,16 @@ async function handleApiRequest(req, res, urlObj, pathname, db) {
   if (method === 'GET' && subPath === '') {
     requireWorkspaceAccess(db, userId, workspaceId, 'viewer');
     sendJson(res, 200, { ok: true, workspace: db.getHydratedWorkspace(workspaceId) });
+    return;
+  }
+
+  // DELETE /api/workspaces/:workspaceId
+  if (method === 'DELETE' && subPath === '') {
+    requireWorkspaceAccess(db, userId, workspaceId, 'owner');
+    if (typeof db.deleteWorkspace === 'function') {
+      db.deleteWorkspace(workspaceId);
+    }
+    sendJson(res, 200, { ok: true, deletedWorkspaceId: workspaceId });
     return;
   }
 

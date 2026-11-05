@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { DATA_DIR, UPLOADS_DIR } from './config.mjs';
+import { DATA_DIR, UPLOADS_DIR, IS_PRODUCTION } from './config.mjs';
 import { makeId, sha256Hex, HttpError } from './security.mjs';
 
 const DB_FILE = path.join(DATA_DIR, 'hooniworks-db.json');
@@ -119,8 +119,38 @@ const DEFAULT_PIE_CAMPAIGNS = [
   }
 ];
 
-function createSeedDatabase() {
+export function createSeedDatabase(isProd = IS_PRODUCTION) {
   const now = new Date().toISOString();
+  if (isProd) {
+    return {
+      schemaVersion: 1,
+      settings: {
+        budget: 50000,
+        usedBudget: 0,
+        reservedBudget: 0,
+        currency: 'KRW',
+        priceCheckedDate: '2026-11-03',
+        retries: 2
+      },
+      users: [
+        { id: 'user-jh', email: 'jh@hooniworks.local', name: '김지훈', roleLabel: '워크스페이스 관리자' },
+        { id: 'user-guest', email: 'partner@hooniworks.local', name: '외부 담당자', roleLabel: '제한된 계정 (권한 검증용)' }
+      ],
+      workspaces: [],
+      memberships: [],
+      productItems: [],
+      assets: [],
+      campaigns: [],
+      concepts: [],
+      templates: [],
+      contents: [],
+      generationJobs: [],
+      channelConnections: [],
+      publications: [],
+      auditLogs: [],
+      uploadSessions: []
+    };
+  }
   return {
     schemaVersion: 1,
     settings: {
@@ -403,6 +433,38 @@ export class HooniDatabase {
   get auditLogs() { return this.state.auditLogs; }
   get uploadSessions() { return this.state.uploadSessions; }
   get settings() { return this.state.settings; }
+
+  clearAllWorkspaces() {
+    this.state.workspaces = [];
+    this.state.memberships = [];
+    this.state.productItems = [];
+    this.state.assets = [];
+    this.state.campaigns = [];
+    this.state.concepts = [];
+    this.state.templates = [];
+    this.state.contents = [];
+    this.state.generationJobs = [];
+    this.state.channelConnections = [];
+    this.state.publications = [];
+    this.save();
+  }
+
+  deleteWorkspace(workspaceId) {
+    this.state.workspaces = this.state.workspaces.filter(w => w.id !== workspaceId);
+    this.state.memberships = this.state.memberships.filter(m => m.workspaceId !== workspaceId);
+    this.state.productItems = this.state.productItems.filter(p => p.workspaceId !== workspaceId);
+    this.state.assets = this.state.assets.filter(a => a.workspaceId !== workspaceId);
+    this.state.campaigns = this.state.campaigns.filter(c => c.workspaceId !== workspaceId);
+    this.state.concepts = this.state.concepts.filter(c => c.workspaceId !== workspaceId);
+    this.state.templates = this.state.templates.filter(t => t.workspaceId !== workspaceId);
+    this.state.contents = this.state.contents.filter(c => c.workspaceId !== workspaceId);
+    this.state.generationJobs = this.state.generationJobs.filter(j => j.workspaceId !== workspaceId);
+    this.state.channelConnections = this.state.channelConnections.filter(c => c.workspaceId !== workspaceId);
+    if (Array.isArray(this.state.publications)) {
+      this.state.publications = this.state.publications.filter(p => p.workspaceId !== workspaceId);
+    }
+    this.save();
+  }
 
   logAudit(workspaceId, actorId, action, entityId, detail = {}) {
     // Strip any accidental secret fields

@@ -29,6 +29,40 @@ export const clearAllData = mutation({
   },
 });
 
+// Delete a single workspace and its associated records
+export const deleteWorkspace = mutation({
+  args: {
+    workspaceId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const ws = await ctx.db
+      .query("workspaces")
+      .withIndex("by_workspaceId", (q) => q.eq("workspaceId", args.workspaceId))
+      .first();
+    if (ws) {
+      await ctx.db.delete(ws._id);
+    }
+    const relatedTables = [
+      "campaigns",
+      "concepts",
+      "contents",
+      "assets",
+      "templates",
+      "publications",
+    ];
+    for (const table of relatedTables) {
+      const records = await ctx.db
+        .query(table)
+        .withIndex("by_workspaceId", (q) => q.eq("workspaceId", args.workspaceId))
+        .collect();
+      for (const rec of records) {
+        await ctx.db.delete(rec._id);
+      }
+    }
+    return { ok: true, deletedWorkspaceId: args.workspaceId };
+  },
+});
+
 // Get all workspaces and high-level counts
 export const listWorkspaces = query({
   handler: async (ctx) => {

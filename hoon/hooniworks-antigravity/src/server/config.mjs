@@ -18,7 +18,7 @@ export const RENDER_DIR = process.env.HOONI_RENDER_DIR || path.join(runtimeBaseD
 // Convex Dual Deployment Configuration: Development (311) vs Production (248)
 export const CONVEX_DEV_URL = 'https://zealous-ferret-311.convex.cloud';
 export const CONVEX_PROD_URL = 'https://bold-labrador-248.convex.cloud';
-export const IS_PRODUCTION = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+export const IS_PRODUCTION = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production' || (process.env.VERCEL === '1' && process.env.VERCEL_ENV !== 'preview');
 export const DEFAULT_CONVEX_URL = process.env.CONVEX_URL || (IS_PRODUCTION ? CONVEX_PROD_URL : CONVEX_DEV_URL);
 
 for (const dir of [DATA_DIR, UPLOADS_DIR, RENDER_DIR]) {
